@@ -55,9 +55,19 @@ Compromis assumé : certains films n'ont pas de durée, genre ou note publique s
 ## 🚀 Démarrage rapide
 
 ```bash
-git clone http://<votre-gitea>/estemobs/tvtracker.git && cd tvtracker
+git clone https://github.com/Estemobs/tvtracker.git && cd tvtracker
 cp .env.example .env      # puis éditer : JWT_SECRET, ADMIN_*
 docker compose up -d --build
+```
+
+Ou encore plus simple, sans cloner le dépôt — l'image prête à l'emploi est publiée sur GHCR :
+
+```bash
+docker run -d --name tvtracker -p 3000:3000 \
+  -e JWT_SECRET=$(openssl rand -hex 32) \
+  -e ADMIN_USERNAME=admin -e ADMIN_EMAIL=admin@exemple.com -e ADMIN_PASSWORD=changez-moi \
+  -v tvtracker_data:/data \
+  ghcr.io/estemobs/tvtracker:latest
 ```
 
 L'application est sur **http://localhost:3000**. Le compte admin défini dans `.env` est créé automatiquement au premier démarrage ; les amis s'inscrivent ensuite via la page Register et apparaissent dans l'onglet Admin pour validation.
@@ -75,17 +85,16 @@ Aucun secret en dur, aucune clé d'API à obtenir.
 
 ## 🔄 Déploiement continu
 
-Chaque push met le site à jour **tout seul** :
+Chaque push sur `main` met le site à jour **tout seul** :
 
 ```
-push Gitea ──► miroir GitHub ──► GitHub Actions ──► image sur GHCR
-                                                        │
-        serveur à jour ◄── Watchtower (vérifie /5 min) ◄┘
+push sur main ──► GitHub Actions ──► image publiée sur GHCR
+                                            │
+    serveur à jour ◄── Watchtower (vérifie /5 min) ◄┘
 ```
 
-1. Le dépôt Gitea est mirroré vers [github.com/Estemobs/tvtracker](https://github.com/Estemobs/tvtracker).
-2. À chaque push sur `main`, le [workflow](.github/workflows/docker-publish.yml) build l'image et la publie sur **GHCR** : `ghcr.io/estemobs/tvtracker` (tags `latest` + `sha-<commit>` ; la branche `dev` publie `:dev`).
-3. Sur le serveur, [`docker-compose.prod.yml`](docker-compose.prod.yml) tire l'image GHCR et lance **Watchtower**, qui redéploie automatiquement dès qu'une nouvelle image apparaît :
+1. À chaque push sur `main`, le [workflow GitHub Actions](.github/workflows/docker-publish.yml) build l'image Docker et la publie sur **GHCR** : [`ghcr.io/estemobs/tvtracker`](https://github.com/Estemobs/tvtracker/pkgs/container/tvtracker) avec les tags `latest` + `sha-<commit>` (une branche `dev` publierait `:dev`).
+2. Sur le serveur, [`docker-compose.prod.yml`](docker-compose.prod.yml) tire l'image depuis GHCR et lance **Watchtower** à côté, qui redéploie automatiquement le conteneur dès qu'une nouvelle image apparaît :
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d
@@ -94,6 +103,7 @@ docker compose -f docker-compose.prod.yml up -d
 - **Les données survivent à tout** : le volume `tvtracker_data` (SQLite + avatars) n'est jamais touché par une mise à jour.
 - **Rollback** : remplacer `latest` par un tag `sha-<commit>` dans le compose et relancer.
 - Le `docker-compose.yml` de base (build local) reste là pour le développement.
+- Alternative à Watchtower : définir la variable de dépôt `DEPLOY_WEBHOOK_URL` dans GitHub (Settings → Secrets and variables → Actions → Variables) — le workflow appellera cette URL après chaque build pour déclencher un redéploiement immédiat côté hébergeur.
 
 ## 🧑‍💻 Développement
 
