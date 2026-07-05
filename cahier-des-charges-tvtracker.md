@@ -1,11 +1,11 @@
 # Cahier des charges — Application web de suivi de séries, animes et films
-*(Projet de remplacement de TV Time — nom de code provisoire : « TVTracker »)*
+*(nom de code provisoire : « TVTracker »)*
 
 ---
 
 ## 1. Contexte et objectifs
 
-TV Time arrive en fin de vie. L'objectif est de recréer une application équivalente, en version web responsive (utilisable confortablement sur téléphone, tablette et PC), permettant à un petit groupe d'utilisateurs de suivre leur progression sur des séries, animes et films.
+L'application de suivi utilisée jusqu'ici arrive en fin de vie. L'objectif est de recréer une application équivalente, en version web responsive (utilisable confortablement sur téléphone, tablette et PC), permettant à un petit groupe d'utilisateurs de suivre leur progression sur des séries, animes et films.
 
 **Objectifs principaux :**
 - Suivre épisode par épisode la progression de chaque utilisateur sur ses séries et animes.
@@ -248,7 +248,7 @@ Le projet doit tenir dans **un seul conteneur Docker** pour coller aux contraint
 | **Lot 1 — MVP** | Docker Compose + pipeline CI/CD GitHub, auth + validation admin, menu Séries (liste, fiche, coche épisodes/saisons, suppression, progression), Explorer (recherche + ajout via TMDB) | Indispensable |
 | **Lot 2** | Menu Films, Profil (infos + modification), statistiques de base (temps total, terminés) | Haute |
 | **Lot 3** | Notes/avis perso, stats détaillées par contenu, filtres et tris avancés, thème clair | Moyenne |
-| **Lot 4 (v2)** | Notifications de nouveaux épisodes, graphiques avancés, import des données TV Time | Bonus |
+| **Lot 4 (v2)** | Notifications de nouveaux épisodes, graphiques avancés, import de l'historique existant | Bonus |
 
 ---
 
@@ -257,6 +257,6 @@ Le projet doit tenir dans **un seul conteneur Docker** pour coller aux contraint
 1. **Stack technique** : préférence pour Node/React, PHP/Laravel, autre ?
 2. **Nombre d'utilisateurs visés** (dimensionne l'hébergement et la BDD).
 3. ~~**Hébergement**~~ → tranché : **conteneur Docker unique** (backend + front + SQLite dans une seule image, volume `/data` persistant). Reste à vérifier : ton hébergeur propose-t-il un **webhook de redéploiement** (Option A) ou faut-il un mini-conteneur Watchtower (Option B) ?
-4. **Import TV Time** : veux-tu récupérer ton historique existant (export CSV de TV Time) ? Si oui, à intégrer au Lot 1 ou 2.
+4. **Import de l'historique existant** : veux-tu récupérer ton historique existant (export CSV) ? Si oui, à intégrer au Lot 1 ou 2.
 5. Les **animes** : simple étiquette sur les séries, ou source de données dédiée (AniList/MAL) pour de meilleures métadonnées ?
 6. Nom définitif du projet.

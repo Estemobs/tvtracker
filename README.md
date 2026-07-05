@@ -1,6 +1,6 @@
 # TVTracker
 
-Application web de suivi de séries, animes et films (remplaçant TV Time), pour un petit groupe d'utilisateurs avec inscriptions validées par un administrateur. Voir le [cahier des charges](cahier-des-charges-tvtracker.md) pour le détail fonctionnel.
+Application web de suivi de séries, animes et films, pour un petit groupe d'utilisateurs avec inscriptions validées par un administrateur. Voir le [cahier des charges](cahier-des-charges-tvtracker.md) pour le détail fonctionnel.
 
 ## Stack
 
@@ -72,4 +72,4 @@ Dockerfile  Build multi-stage (frontend -> dépendances backend -> image finale)
 
 ## Statut par rapport au cahier des charges
 
-Réalisé : Lot 1 (auth + validation admin, menu Séries complet, Explorer TMDB, Docker + CI) et Lot 2 (menu Films, Profil avec édition et statistiques). Non couverts : thème clair, graphiques avancés, import TV Time, notifications (Lot 3/4, marqués optionnels ou v2 dans le cahier des charges).
+Réalisé : Lot 1 (auth + validation admin, menu Séries complet, Explorer TMDB, Docker + CI) et Lot 2 (menu Films, Profil avec édition et statistiques). Non couverts : thème clair, graphiques avancés, import d'historique externe, notifications (Lot 3/4, marqués optionnels ou v2 dans le cahier des charges).
