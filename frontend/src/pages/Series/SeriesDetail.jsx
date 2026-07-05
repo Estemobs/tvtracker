@@ -125,26 +125,31 @@ export default function SeriesDetail() {
           const seasonWatched = season.episodes.every((e) => e.watched);
           return (
             <div key={season.season} className="border border-base-700 rounded-lg overflow-hidden">
-              <button
-                onClick={() => setOpenSeason(openSeason === season.season ? null : season.season)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-base-900 text-sm font-medium"
-              >
-                <span>Saison {season.season}</span>
-                <span className="text-xs text-gray-400">
-                  {season.episodes.filter((e) => e.watched).length}/{season.episodes.length}
-                </span>
-              </button>
+              <div className="flex items-center bg-base-900">
+                <button
+                  onClick={() => setOpenSeason(openSeason === season.season ? null : season.season)}
+                  className="flex-1 flex items-center justify-between px-4 py-3 text-sm font-medium min-w-0"
+                >
+                  <span>Saison {season.season}</span>
+                  <span className="text-xs text-gray-400">
+                    {season.episodes.filter((e) => e.watched).length}/{season.episodes.length}
+                  </span>
+                </button>
+                <button
+                  onClick={() => toggleSeason(season.season, !seasonWatched)}
+                  disabled={busy}
+                  title={seasonWatched ? 'Décocher toute la saison' : 'Marquer toute la saison comme vue'}
+                  className={`shrink-0 mx-3 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 ${
+                    seasonWatched
+                      ? 'bg-accent-600 border-accent-600 text-white'
+                      : 'bg-base-800 border-base-600 text-gray-300 hover:border-accent-500 hover:text-accent-500'
+                  }`}
+                >
+                  {seasonWatched ? 'Vue ✓' : 'Tout voir'}
+                </button>
+              </div>
               {openSeason === season.season && (
                 <div className="divide-y divide-base-800">
-                  <div className="px-4 py-2 bg-base-800/50">
-                    <button
-                      onClick={() => toggleSeason(season.season, !seasonWatched)}
-                      disabled={busy}
-                      className="text-xs text-accent-500 hover:underline"
-                    >
-                      {seasonWatched ? 'Tout décocher' : 'Marquer toute la saison comme vue'}
-                    </button>
-                  </div>
                   {season.episodes.map((ep) => (
                     <label key={ep.id} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-base-800/40 cursor-pointer">
                       <input

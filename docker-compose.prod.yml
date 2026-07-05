@@ -1,0 +1,37 @@
+# Déploiement production : tire l'image publiée sur GHCR par GitHub Actions,
+# et Watchtower met à jour le conteneur automatiquement à chaque nouvelle image.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Chaîne complète : push Gitea -> miroir GitHub -> Actions build+push GHCR
+# -> Watchtower détecte la nouvelle image (toutes les 5 min) -> redéploie.
+# Le volume /data (SQLite + avatars) n'est jamais touché par une mise à jour.
+
+services:
+  tvtracker:
+    image: ghcr.io/estemobs/tvtracker:latest
+    container_name: tvtracker
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    volumes:
+      - tvtracker_data:/data
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: tvtracker-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 --cleanup --label-enable
+
+volumes:
+  tvtracker_data:

@@ -54,11 +54,21 @@ npm run dev
 | `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Compte admin initial (créé au premier boot si absent) | oui |
 | `DATA_DIR` | Dossier de données (SQLite + uploads) | non (défaut `/data` en conteneur) |
 
-## CI/CD
+## CI/CD et déploiement automatique
 
-Le workflow [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) build l'image et la pousse sur GHCR (`ghcr.io/<repo>`) à chaque push sur `main` (tag `latest`) ou `dev` (tag `dev`), plus un tag de version par commit. Si une variable de dépôt `DEPLOY_WEBHOOK_URL` est configurée, un webhook de redéploiement est appelé après le build (Option A du cahier des charges — sinon utiliser Watchtower, Option B).
+Le workflow [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) build l'image et la pousse sur GHCR (`ghcr.io/estemobs/tvtracker`) à chaque push sur `main` (tag `latest`) ou `dev` (tag `dev`), plus un tag de version par commit. Le dépôt de travail est un Gitea auto-hébergé, mirroré vers [github.com/Estemobs/tvtracker](https://github.com/Estemobs/tvtracker) qui exécute le workflow.
 
-> Le dépôt distant actuellement configuré (`origin`) est une instance Gitea auto-hébergée, pas GitHub : ce workflow ne se déclenchera que si le code est poussé vers un dépôt GitHub (miroir ou changement de remote). Gitea a son propre système d'Actions (syntaxe très proche) si vous préférez rester dessus.
+**Mise à jour automatique du serveur** : utiliser [`docker-compose.prod.yml`](docker-compose.prod.yml), qui tire l'image GHCR (au lieu de builder localement) et embarque **Watchtower** :
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Chaîne complète : push Gitea → miroir GitHub → Actions build + push GHCR → Watchtower détecte la nouvelle image (vérification toutes les 5 min) → redéploie le conteneur. Le volume `/data` n'est jamais touché.
+
+> ⚠️ Après le **premier** run du workflow, le paquet GHCR est privé par défaut : aller sur la page du package (`github.com/Estemobs?tab=packages`) → Package settings → Change visibility → **Public**, sinon le serveur devra faire `docker login ghcr.io`. À faire une seule fois.
+
+Le `docker-compose.yml` de base (build local) reste utile pour le développement. Rollback : `docker compose -f docker-compose.prod.yml up -d` après avoir remplacé `latest` par le tag `sha-<commit>` voulu.
 
 ## Structure
 
