@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import logo from '../assets/logo.svg';
 
 export default function Login() {
   const { login } = useAuth();
@@ -27,7 +28,10 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-center mb-8">TVTracker</h1>
+        <div className="flex flex-col items-center gap-3 mb-8">
+          <img src={logo} alt="TVTracker" className="w-16 h-16" />
+          <h1 className="text-2xl font-bold">TVTracker</h1>
+        </div>
         <form onSubmit={onSubmit} className="space-y-4 bg-base-900 p-6 rounded-xl border border-base-700">
           <div>
             <label className="block text-sm text-gray-400 mb-1">E-mail ou nom d'utilisateur</label>
