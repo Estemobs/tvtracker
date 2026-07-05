@@ -54,7 +54,7 @@ export default function App() {
       <Route path="/films/:movieId" element={<Protected><Layout><MovieDetail /></Layout></Protected>} />
 
       <Route path="/explorer" element={<Protected><Layout><Explore /></Layout></Protected>} />
-      <Route path="/explorer/:mediaType/:tmdbId" element={<Protected><Layout><ExploreDetail /></Layout></Protected>} />
+      <Route path="/explorer/:mediaType/:source/:sourceId" element={<Protected><Layout><ExploreDetail /></Layout></Protected>} />
 
       <Route path="/profil" element={<Protected><Layout><Profile /></Layout></Protected>} />
       <Route path="/admin" element={<Protected adminOnly><Layout><Admin /></Layout></Protected>} />

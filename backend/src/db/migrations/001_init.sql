@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS shows (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tmdb_id INTEGER NOT NULL UNIQUE,
+  source TEXT NOT NULL DEFAULT 'tvmaze',
+  source_id TEXT NOT NULL,
   type TEXT NOT NULL DEFAULT 'serie' CHECK (type IN ('serie', 'anime')),
   title TEXT NOT NULL,
   poster TEXT,
@@ -24,7 +25,8 @@ CREATE TABLE IF NOT EXISTS shows (
   air_status TEXT,
   nb_seasons INTEGER NOT NULL DEFAULT 0,
   nb_episodes INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(source, source_id)
 );
 
 CREATE TABLE IF NOT EXISTS episodes (
@@ -40,7 +42,8 @@ CREATE TABLE IF NOT EXISTS episodes (
 
 CREATE TABLE IF NOT EXISTS movies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tmdb_id INTEGER NOT NULL UNIQUE,
+  source TEXT NOT NULL DEFAULT 'itunes' CHECK (source IN ('itunes', 'wikipedia')),
+  source_id TEXT NOT NULL,
   title TEXT NOT NULL,
   poster TEXT,
   backdrop TEXT,
@@ -49,7 +52,8 @@ CREATE TABLE IF NOT EXISTS movies (
   note REAL,
   genres TEXT,
   release_date TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(source, source_id)
 );
 
 CREATE TABLE IF NOT EXISTS user_shows (

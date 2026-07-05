@@ -8,7 +8,6 @@ services:
     environment:
       PORT: 3000
       JWT_SECRET: ${JWT_SECRET}
-      TMDB_API_KEY: ${TMDB_API_KEY}
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}

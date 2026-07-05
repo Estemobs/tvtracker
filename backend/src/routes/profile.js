@@ -104,12 +104,12 @@ router.get('/stats', (req, res) => {
   `).all(userId);
 
   const completedShows = db.prepare(`
-    SELECT s.tmdb_id, s.title, s.poster, s.type FROM user_shows us JOIN shows s ON s.id = us.show_id
+    SELECT s.source, s.source_id, s.title, s.poster, s.type FROM user_shows us JOIN shows s ON s.id = us.show_id
     WHERE us.user_id = ? AND us.status = 'completed'
   `).all(userId);
 
   const watchedMovies = db.prepare(`
-    SELECT m.tmdb_id, m.title, m.poster FROM user_movies um JOIN movies m ON m.id = um.movie_id
+    SELECT m.source, m.source_id, m.title, m.poster FROM user_movies um JOIN movies m ON m.id = um.movie_id
     WHERE um.user_id = ? AND um.status = 'watched'
   `).all(userId);
 

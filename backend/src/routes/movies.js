@@ -13,7 +13,8 @@ router.get('/', (req, res) => {
 
   rows = rows.map((r) => ({
     movie_id: r.movie_id,
-    tmdb_id: r.tmdb_id,
+    source: r.source,
+    source_id: r.source_id,
     title: r.title,
     poster: r.poster,
     note: r.note,
@@ -36,9 +37,9 @@ router.get('/', (req, res) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { tmdb_id } = req.body || {};
-    if (!tmdb_id) return res.status(400).json({ error: 'tmdb_id requis.' });
-    const movie = await cacheMovie(tmdb_id);
+    const { source, source_id } = req.body || {};
+    if (!source || !source_id) return res.status(400).json({ error: 'source et source_id requis.' });
+    const movie = await cacheMovie(source, source_id);
     db.prepare(`INSERT INTO user_movies (user_id, movie_id) VALUES (?, ?)
       ON CONFLICT(user_id, movie_id) DO NOTHING`).run(req.user.id, movie.id);
     res.status(201).json({ movie_id: movie.id });
@@ -51,7 +52,8 @@ router.get('/:movieId', (req, res) => {
   if (!row) return res.status(404).json({ error: 'Film introuvable dans votre liste.' });
   res.json({
     movie_id: row.movie_id,
-    tmdb_id: row.tmdb_id,
+    source: row.source,
+    source_id: row.source_id,
     title: row.title,
     poster: row.poster,
     backdrop: row.backdrop,

@@ -3,15 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 
 export default function ExploreDetail() {
-  const { mediaType, tmdbId } = useParams();
+  const { mediaType, source, sourceId } = useParams();
   const navigate = useNavigate();
   const [details, setDetails] = useState(null);
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    const endpoint = mediaType === 'movie' ? `/explore/movie/${tmdbId}` : `/explore/tv/${tmdbId}`;
+    const endpoint = mediaType === 'movie' ? `/explore/movie/${source}/${sourceId}` : `/explore/tv/${sourceId}`;
     api.get(endpoint).then(setDetails);
-  }, [mediaType, tmdbId]);
+  }, [mediaType, source, sourceId]);
 
   if (!details) return <p className="text-gray-400 text-sm">Chargement…</p>;
 
@@ -19,10 +19,10 @@ export default function ExploreDetail() {
     setAdding(true);
     try {
       if (mediaType === 'movie') {
-        await api.post('/movies', { tmdb_id: Number(tmdbId) });
-        navigate(`/films/${tmdbId}`);
+        const { movie_id } = await api.post('/movies', { source, source_id: sourceId });
+        navigate(`/films/${movie_id}`);
       } else {
-        await api.post('/shows', { tmdb_id: Number(tmdbId) });
+        await api.post('/shows', { source_id: sourceId });
         setDetails((prev) => ({ ...prev, already_added: true }));
       }
     } finally {

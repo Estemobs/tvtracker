@@ -8,17 +8,16 @@ Application web de suivi de séries, animes et films, pour un petit groupe d'uti
 - **Backend** : Node.js + Express, sert l'API REST et les fichiers statiques du front sur le même port.
 - **Base de données** : SQLite (`better-sqlite3`), fichier unique dans `/data`.
 - **Auth** : JWT + bcrypt, inscriptions en attente de validation admin.
-- **Catalogue** : API TMDB (recherche, tendances, fiches, saisons/épisodes), mise en cache locale.
+- **Catalogue** : aucune clé d'API requise — [TVmaze](https://www.tvmaze.com/api) pour les séries/animes (recherche, saisons/épisodes) et [iTunes](https://itunes.apple.com) (charts) + [Wikipédia](https://fr.wikipedia.org) (recherche) pour les films, mise en cache locale.
 - **Déploiement** : image Docker unique multi-stage (front + back + SQLite), volume persistant `/data`.
 
 ## Lancer en local avec Docker (recommandé)
 
-1. Copier `.env.example` en `.env` et renseigner au minimum `JWT_SECRET` et `TMDB_API_KEY` :
+1. Copier `.env.example` en `.env` et renseigner au minimum `JWT_SECRET` :
    ```bash
    cp .env.example .env
    ```
    - `JWT_SECRET` : `openssl rand -hex 32`
-   - `TMDB_API_KEY` : clé API v3 gratuite sur https://www.themoviedb.org/settings/api
    - `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` : compte admin créé automatiquement au premier démarrage.
 
 2. Lancer :
@@ -38,7 +37,7 @@ Le back utilise `better-sqlite3` (module natif) : installez les dépendances ave
 # Backend
 cd backend
 npm install
-JWT_SECRET=dev TMDB_API_KEY=xxx ADMIN_EMAIL=admin@test.com ADMIN_USERNAME=admin ADMIN_PASSWORD=adminpass npm run dev
+JWT_SECRET=dev ADMIN_EMAIL=admin@test.com ADMIN_USERNAME=admin ADMIN_PASSWORD=adminpass npm run dev
 
 # Frontend (autre terminal, proxy vers le backend sur :3000)
 cd frontend
@@ -52,7 +51,6 @@ npm run dev
 |---|---|---|
 | `PORT` | Port HTTP exposé par le conteneur | non (défaut 3000) |
 | `JWT_SECRET` | Secret de signature des tokens de session | oui |
-| `TMDB_API_KEY` | Clé API TMDB pour le menu Explorer | oui pour Explorer |
 | `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Compte admin initial (créé au premier boot si absent) | oui |
 | `DATA_DIR` | Dossier de données (SQLite + uploads) | non (défaut `/data` en conteneur) |
 
@@ -65,11 +63,22 @@ Le workflow [`.github/workflows/docker-publish.yml`](.github/workflows/docker-pu
 ## Structure
 
 ```
-backend/    API Express + SQLite + intégration TMDB
+backend/    API Express + SQLite + intégration catalogue (TVmaze / iTunes / Wikipédia)
 frontend/   Application React (Séries, Films, Explorer, Profil, Admin)
 Dockerfile  Build multi-stage (frontend -> dépendances backend -> image finale)
 ```
 
+## Catalogue sans clé d'API
+
+Aucune inscription ni clé d'API n'est nécessaire pour le menu Explorer :
+
+- **Séries/Animes** : [TVmaze](https://www.tvmaze.com/api) — recherche, fiches, saisons/épisodes, notes. Détection anime via le genre `Anime` renvoyé par l'API.
+- **Films** : deux sources combinées puisque l'API de recherche films d'iTunes a été désactivée par Apple ces dernières années (seuls le lookup par identifiant et les classements RSS fonctionnent encore) :
+  - Recherche libre → Wikipédia (français), filtré aux pages dont la description commence par « film ».
+  - Tendances/populaires → classement officiel iTunes (charts).
+
+  Conséquence assumée : les films ont un synopsis et une affiche, mais pas toujours de durée, de genre ou de note publique (ces champs restent vides selon la source d'origine), contrairement à TMDB qui les fournirait tous mais impose une clé d'API.
+
 ## Statut par rapport au cahier des charges
 
-Réalisé : Lot 1 (auth + validation admin, menu Séries complet, Explorer TMDB, Docker + CI) et Lot 2 (menu Films, Profil avec édition et statistiques). Non couverts : thème clair, graphiques avancés, import d'historique externe, notifications (Lot 3/4, marqués optionnels ou v2 dans le cahier des charges).
+Réalisé : Lot 1 (auth + validation admin, menu Séries complet, Explorer sans clé d'API, Docker + CI) et Lot 2 (menu Films, Profil avec édition et statistiques). Non couverts : thème clair, graphiques avancés, import d'historique externe, notifications (Lot 3/4, marqués optionnels ou v2 dans le cahier des charges).

@@ -26,7 +26,7 @@ function CompletedGrid({ title, items }) {
       ) : (
         <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-6 gap-3">
           {items.map((it) => (
-            <div key={it.tmdb_id} className="aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
+            <div key={`${it.source}-${it.source_id}`} className="aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
               {it.poster ? (
                 <img src={it.poster} alt={it.title} loading="lazy" className="w-full h-full object-cover" />
               ) : (

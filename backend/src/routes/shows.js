@@ -26,7 +26,7 @@ router.get('/', (req, res) => {
     const progress = showProgress(req.user.id, r.show_id);
     return {
       show_id: r.show_id,
-      tmdb_id: r.tmdb_id,
+      source_id: r.source_id,
       type: r.type,
       title: r.title,
       poster: r.poster,
@@ -57,9 +57,9 @@ router.get('/', (req, res) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { tmdb_id } = req.body || {};
-    if (!tmdb_id) return res.status(400).json({ error: 'tmdb_id requis.' });
-    const show = await cacheShow(tmdb_id);
+    const { source_id } = req.body || {};
+    if (!source_id) return res.status(400).json({ error: 'source_id requis.' });
+    const show = await cacheShow(source_id);
     db.prepare(`INSERT INTO user_shows (user_id, show_id) VALUES (?, ?)
       ON CONFLICT(user_id, show_id) DO NOTHING`).run(req.user.id, show.id);
     res.status(201).json({ show_id: show.id });
@@ -84,7 +84,7 @@ router.get('/:showId', (req, res) => {
 
   res.json({
     show_id: userShow.show_id,
-    tmdb_id: userShow.tmdb_id,
+    source_id: userShow.source_id,
     type: userShow.type,
     title: userShow.title,
     poster: userShow.poster,

@@ -9,8 +9,8 @@ function ResultGrid({ results }) {
     <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       {results.map((r) => (
         <Link
-          key={`${r.media_type}-${r.tmdb_id}`}
-          to={`/explorer/${r.media_type}/${r.tmdb_id}`}
+          key={`${r.source}-${r.source_id}`}
+          to={`/explorer/${r.media_type}/${r.source}/${encodeURIComponent(r.source_id)}`}
           className="group flex flex-col gap-2"
         >
           <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
