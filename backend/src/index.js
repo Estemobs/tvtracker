@@ -22,6 +22,7 @@ app.disable('x-powered-by');
 app.use(express.json());
 
 app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
+app.get('/api/version', (req, res) => res.json({ version: process.env.GIT_SHA || 'dev' }));
 
 app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
 

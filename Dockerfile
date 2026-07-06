@@ -26,6 +26,8 @@ COPY --from=frontend-build /app/frontend/dist ./public
 RUN mkdir -p /data && chown -R node:node /data /app/backend
 USER node
 
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
 ENV PORT=3000
 ENV DATA_DIR=/data
 EXPOSE 3000

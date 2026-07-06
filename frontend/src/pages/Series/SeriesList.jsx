@@ -8,6 +8,7 @@ export default function SeriesList() {
   const [filter, setFilter] = useState('all');
   const [type, setType] = useState('all');
   const [sort, setSort] = useState('recent');
+  const [version, setVersion] = useState(null);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -17,6 +18,10 @@ export default function SeriesList() {
     setShows(null);
     api.get(`/shows?${params}`).then(setShows).catch(() => setShows([]));
   }, [filter, type, sort]);
+
+  useEffect(() => {
+    api.get('/version').then((d) => setVersion(d.version)).catch(() => {});
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -58,6 +63,24 @@ export default function SeriesList() {
             />
           ))}
         </div>
+      )}
+
+      {version && (
+        <p className="text-center text-[11px] text-gray-600 pt-4">
+          Version{' '}
+          {version === 'dev' ? (
+            'dev'
+          ) : (
+            <a
+              href={`https://github.com/Estemobs/tvtracker/commit/${version}`}
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-gray-400 hover:underline"
+            >
+              {version.slice(0, 7)}
+            </a>
+          )}
+        </p>
       )}
     </div>
   );

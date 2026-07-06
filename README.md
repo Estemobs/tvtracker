@@ -107,6 +107,8 @@ docker compose -f docker-compose.prod.yml up -d
 - **Les données survivent à tout** : le volume `tvtracker_data` (SQLite + avatars) n'est jamais touché par une mise à jour.
 - **Rollback** : remplacer `latest` par un tag `sha-<commit>` dans le compose et relancer.
 - Le `docker-compose.yml` de base (build local) reste là pour le développement.
+
+**Vérifier la version déployée** : le commit exact tourne dans l'appli est visible en bas de la page Séries (cliquable vers GitHub), ou directement via `curl http://<serveur>:3000/api/version`. Pour comparer avec le dernier commit sur GitHub : [github.com/Estemobs/tvtracker/commits/main](https://github.com/Estemobs/tvtracker/commits/main).
 - Alternative à Watchtower : définir la variable de dépôt `DEPLOY_WEBHOOK_URL` dans GitHub (Settings → Secrets and variables → Actions → Variables) — le workflow appellera cette URL après chaque build pour déclencher un redéploiement immédiat côté hébergeur.
 
 ## 🧑‍💻 Développement
