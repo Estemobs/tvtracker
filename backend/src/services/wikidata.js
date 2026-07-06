@@ -67,16 +67,40 @@ export async function getPoster(wikibaseItem) {
   return commonsFileUrl(filename);
 }
 
-export async function getEnglishSitelink(wikibaseItem) {
+async function getSitelink(wikibaseItem, site) {
   if (!wikibaseItem) return null;
   const url = new URL(API_ENDPOINT);
   url.searchParams.set('action', 'wbgetentities');
   url.searchParams.set('ids', wikibaseItem);
   url.searchParams.set('props', 'sitelinks');
-  url.searchParams.set('sitefilter', 'enwiki');
+  url.searchParams.set('sitefilter', site);
   url.searchParams.set('format', 'json');
   const resp = await fetch(url, { headers: HEADERS });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.entities?.[wikibaseItem]?.sitelinks?.enwiki?.title || null;
+  return data.entities?.[wikibaseItem]?.sitelinks?.[site]?.title || null;
+}
+
+export const getEnglishSitelink = (wikibaseItem) => getSitelink(wikibaseItem, 'enwiki');
+export const getFrenchSitelink = (wikibaseItem) => getSitelink(wikibaseItem, 'frwiki');
+
+// "followed by" (P156) points to the next film in a franchise/saga — with its own release date
+// (P577) this doubles as an upcoming-sequel preview, even for an unreleased future film.
+export async function getNextInstallment(wikibaseItem) {
+  if (!wikibaseItem) return null;
+  const query = `
+    SELECT ?nextLabel ?date WHERE {
+      wd:${wikibaseItem} wdt:P156 ?next.
+      OPTIONAL { ?next wdt:P577 ?date. }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
+    } LIMIT 5
+  `;
+  const url = new URL(SPARQL_ENDPOINT);
+  url.searchParams.set('query', query);
+  const resp = await fetch(url, { headers: { ...HEADERS, Accept: 'application/sparql-results+json' } });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  const row = data.results.bindings.find((r) => r.nextLabel && !/^Q\d+$/.test(r.nextLabel.value));
+  if (!row) return null;
+  return { title: row.nextLabel.value, release_date: row.date?.value?.slice(0, 10) || null };
 }

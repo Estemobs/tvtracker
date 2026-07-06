@@ -51,9 +51,16 @@ export default function MovieDetail() {
 
       {movie.synopsis && <p className="text-sm text-gray-300 leading-relaxed">{movie.synopsis}</p>}
 
-      {movie.added_by_count > 0 && (
-        <p className="text-xs text-gray-400">
-          👥 Ajouté par {movie.added_by_count} utilisateur{movie.added_by_count > 1 ? 's' : ''}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+        {movie.platform && <span>📺 Disponible sur {movie.platform}</span>}
+        {movie.added_by_count > 0 && (
+          <span>👥 Ajouté par {movie.added_by_count} utilisateur{movie.added_by_count > 1 ? 's' : ''}</span>
+        )}
+      </div>
+
+      {movie.next_installment?.release_date && (
+        <p className="text-xs text-accent-500">
+          🎬 Prochain volet « {movie.next_installment.title} » — {new Date(movie.next_installment.release_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       )}
 

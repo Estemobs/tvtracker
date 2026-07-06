@@ -1,9 +1,14 @@
+import * as wikidata from './wikidata.js';
+
 const HEADERS = { 'User-Agent': 'TVTracker/1.0 (self-hosted watch tracker; no contact url)' };
 const FILM_DESCRIPTION = /^(film|long[\s-]m[ée]trage)\b/i;
 // Very recent pages often don't have a Wikidata short description yet (description: null),
 // so also accept the "(film)" / "(film, 2026)" disambiguator commonly used in the page title itself.
 const FILM_TITLE_HINT = /\(film(?:,\s*\d{4})?\)$/i;
+const EN_FILM_TITLE_HINT = /\(\d{4}\s*film\)$/i;
 const PERSON_DESCRIPTION = /\b(acteur|actrice|actor|actress)\b/i;
+const SYNOPSIS_SECTION = /^(synopsis|intrigue|r[ée]sum[ée])$/i;
+const PLATFORM_PATTERN = /\b(?:diffus[ée]e?|disponible|sorti[e]?|distribu[ée]e?)\s+(?:sur|dans|via)\s+([A-Z][\w+.\s]{2,25}?)(?=[.,;]|\s+(?:et|le|en|dans|à|aux)\b|$)/;
 
 function looksLikeFilm(page) {
   return FILM_DESCRIPTION.test(page.description || '') || FILM_TITLE_HINT.test(page.title || '');
@@ -18,6 +23,22 @@ function upscaleThumbnail(url, width = 500) {
 function extractYear(description, title) {
   const match = /(\d{4})/.exec(description || '') || /(\d{4})/.exec(title || '');
   return match ? match[1] : '';
+}
+
+function extractPlatform(text) {
+  const match = PLATFORM_PATTERN.exec(text || '');
+  return match ? match[1].trim() : null;
+}
+
+function stripArticleHtml(html) {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#160;|&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\[\s*modifier\s*\|\s*modifier le code\s*\]/gi, '')
+    .replace(/Cette section est vide,?\s+insuffisamment détaillée ou incomplète\.?\s+Votre aide\s+est la bienvenue\s*!?\s+Comment faire\s*\??/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 async function searchPages(base, query, limit = 20) {
@@ -45,6 +66,41 @@ async function getSummary(base, key) {
   return resp.json();
 }
 
+// The REST summary's "extract" is the article's lead paragraph, which on French Wikipedia film
+// articles is almost always production trivia ("X est un film réalisé par Y, sorti en Z...") —
+// not the plot. The actual plot lives in its own "Synopsis"/"Intrigue" section further down.
+async function getSynopsisSection(base, key) {
+  try {
+    const sectionsUrl = new URL(`${base}/w/api.php`);
+    sectionsUrl.searchParams.set('action', 'parse');
+    sectionsUrl.searchParams.set('page', key);
+    sectionsUrl.searchParams.set('prop', 'sections');
+    sectionsUrl.searchParams.set('format', 'json');
+    const sectionsResp = await fetch(sectionsUrl, { headers: HEADERS });
+    if (!sectionsResp.ok) return null;
+    const sectionsData = await sectionsResp.json();
+    const section = sectionsData.parse?.sections?.find((s) => SYNOPSIS_SECTION.test(s.line));
+    if (!section) return null;
+
+    const textUrl = new URL(`${base}/w/api.php`);
+    textUrl.searchParams.set('action', 'parse');
+    textUrl.searchParams.set('page', key);
+    textUrl.searchParams.set('prop', 'text');
+    textUrl.searchParams.set('section', section.index);
+    textUrl.searchParams.set('format', 'json');
+    const textResp = await fetch(textUrl, { headers: HEADERS });
+    if (!textResp.ok) return null;
+    const textData = await textResp.json();
+    const html = textData.parse?.text?.['*'];
+    if (!html) return null;
+
+    const text = stripArticleHtml(html).replace(/^(Synopsis|Intrigue|R[ée]sum[ée])\s*/i, '').trim();
+    return text.length > 20 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function searchMovies(query) {
   const pages = await searchPages('https://fr.wikipedia.org', query);
   return pages
@@ -68,6 +124,7 @@ export async function getMovieSummary(sourceId) {
     err.status = 404;
     throw err;
   }
+  const plot = await getSynopsisSection('https://fr.wikipedia.org', sourceId);
   return {
     source: 'wikipedia',
     source_id: sourceId,
@@ -75,7 +132,8 @@ export async function getMovieSummary(sourceId) {
     title: data.title,
     poster: upscaleThumbnail(data.originalimage?.source || data.thumbnail?.source),
     backdrop: null,
-    synopsis: data.extract || '',
+    synopsis: plot || data.extract || '',
+    platform: extractPlatform(data.extract),
     note: null,
     genres: [],
     duration: null,
@@ -101,6 +159,43 @@ export async function findWikibaseItem(title) {
   } catch {
     return null;
   }
+}
+
+// Fallback for English-titled searches: French Wikipedia's own search usually resolves these
+// via redirects, but when it comes up empty (obscure titles, or ones lacking a redirect yet),
+// look on English Wikipedia and — only when a French version of that exact article exists via
+// its Wikidata sitelink, never a fuzzy title guess — surface the French page instead, so the
+// rest of the app (source='wikipedia' always meaning fr.wikipedia.org) doesn't need to change.
+export async function searchMoviesEnglishFallback(query) {
+  const pages = await searchPages('https://en.wikipedia.org', query, 10);
+  const matches = pages.filter((p) => EN_FILM_TITLE_HINT.test(p.title || '') || FILM_DESCRIPTION.test(p.description || ''));
+
+  const resolved = await Promise.all(matches.slice(0, 5).map(async (page) => {
+    try {
+      const enSummary = await getSummary('https://en.wikipedia.org', page.key);
+      const wikibaseItem = enSummary?.wikibase_item;
+      if (!wikibaseItem) return null;
+      const frTitle = await wikidata.getFrenchSitelink(wikibaseItem);
+      if (!frTitle) return null;
+      const frKey = frTitle.replace(/ /g, '_');
+      const frData = await getSummary('https://fr.wikipedia.org', frKey);
+      if (!frData) return null;
+      return {
+        source: 'wikipedia',
+        source_id: frKey,
+        media_type: 'movie',
+        type: 'movie',
+        title: frData.title,
+        poster: upscaleThumbnail(frData.originalimage?.source || frData.thumbnail?.source),
+        year: extractYear(frData.description, frData.title),
+        note: null,
+      };
+    } catch {
+      return null;
+    }
+  }));
+
+  return resolved.filter(Boolean);
 }
 
 export async function getPersonBio(name) {

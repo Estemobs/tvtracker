@@ -132,10 +132,17 @@ export default function SeriesDetail() {
           {show.synopsis && <p className="text-sm text-gray-300 leading-relaxed">{show.synopsis}</p>}
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+            {show.platform && <span>📺 Disponible sur {show.platform}</span>}
             {scheduleLabel && <span>📅 {scheduleLabel}</span>}
             {show.runtime && <span>⏱️ {show.runtime} min</span>}
             <span>👥 Ajoutée par {show.added_by_count} utilisateur{show.added_by_count > 1 ? 's' : ''}</span>
           </div>
+
+          {show.next_episode?.air_date && (
+            <p className="text-xs text-accent-500">
+              ▶️ Prochain épisode : S{show.next_episode.season}E{show.next_episode.episode_number} — {new Date(show.next_episode.air_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          )}
 
           <div>
             <label className="text-sm text-gray-400 block mb-1">Votre note (sur 10)</label>

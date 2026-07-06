@@ -32,7 +32,18 @@ router.get('/search', async (req, res, next) => {
       tvmaze.searchShows(q).catch(() => []),
       wikipedia.searchMovies(q).catch(() => []),
     ]);
-    res.json({ results: annotateAdded(req, [...shows, ...movies]) });
+
+    // French Wikipedia search already resolves most English titles via redirects; only fall
+    // back to searching English Wikipedia (then mapping back to the French article) when the
+    // direct search came up thin, to avoid doubling API calls on every ordinary search.
+    let allMovies = movies;
+    if (movies.length < 3) {
+      const englishMatches = await wikipedia.searchMoviesEnglishFallback(q).catch(() => []);
+      const seen = new Set(movies.map((m) => m.source_id));
+      allMovies = [...movies, ...englishMatches.filter((m) => !seen.has(m.source_id))];
+    }
+
+    res.json({ results: annotateAdded(req, [...shows, ...allMovies]) });
   } catch (e) { next(e); }
 });
 
@@ -80,7 +91,7 @@ router.get('/tv/:sourceId', async (req, res, next) => {
     const already = cachedShow
       ? db.prepare(`SELECT 1 FROM user_shows WHERE user_id = ? AND show_id = ?`).get(req.user.id, cachedShow.id)
       : null;
-    res.json({ ...details, cast, added_by_count: addedByCount, already_added: !!already });
+    res.json({ ...details, cast, added_by_count: addedByCount, already_added: !!already, show_id: already ? cachedShow.id : null });
   } catch (e) { next(e); }
 });
 
@@ -101,7 +112,7 @@ router.get('/movie/:source/:sourceId', async (req, res, next) => {
       ? db.prepare(`SELECT 1 FROM user_movies WHERE user_id = ? AND movie_id = ?`).get(req.user.id, cachedMovie.id)
       : null;
 
-    res.json({ ...details, added_by_count: addedByCount, already_added: !!already });
+    res.json({ ...details, added_by_count: addedByCount, already_added: !!already, movie_id: already ? cachedMovie.id : null });
   } catch (e) { next(e); }
 });
 

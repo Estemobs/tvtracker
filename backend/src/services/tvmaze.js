@@ -84,6 +84,15 @@ export async function getShowDetails(sourceId) {
   const show = await tvmazeFetch(`/shows/${sourceId}`);
   const episodes = await tvmazeFetch(`/shows/${sourceId}/episodes`);
   const seasons = [...new Set(episodes.map((e) => e.season))].sort((a, b) => a - b);
+
+  let nextEpisode = null;
+  const nextHref = show._links?.nextepisode?.href;
+  if (nextHref) {
+    const episodeId = nextHref.split('/').pop();
+    const ep = await tvmazeFetch(`/episodes/${episodeId}`).catch(() => null);
+    if (ep) nextEpisode = { season: ep.season, episode_number: ep.number, air_date: ep.airdate };
+  }
+
   return {
     source: 'tvmaze',
     source_id: String(show.id),
@@ -95,9 +104,11 @@ export async function getShowDetails(sourceId) {
     note: show.rating?.average ?? null,
     genres: show.genres || [],
     air_status: show.status,
+    platform: show.webChannel?.name || show.network?.name || null,
     schedule_day: show.schedule?.days?.[0] || null,
     schedule_time: show.schedule?.time || null,
     runtime: show.averageRuntime ?? show.runtime ?? null,
+    next_episode: nextEpisode,
     nb_seasons: seasons.length,
     nb_episodes: episodes.length,
     episodes: episodes.map((e) => ({
