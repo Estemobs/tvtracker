@@ -46,7 +46,17 @@ function mapShow(show) {
 
 export async function searchShows(query) {
   const data = await tvmazeFetch(`/search/shows?q=${encodeURIComponent(query)}`);
-  return data.map((r) => mapShow(r.show));
+  const shows = data.map((r) => mapShow(r.show));
+  // /search/shows doesn't support ?embed, so season counts need one lightweight call per result.
+  const withSeasons = await Promise.all(shows.map(async (show) => {
+    try {
+      const seasons = await tvmazeFetch(`/shows/${show.source_id}/seasons`);
+      return { ...show, nb_seasons: seasons.length };
+    } catch {
+      return show;
+    }
+  }));
+  return withSeasons;
 }
 
 export async function scheduleHighlights() {
@@ -85,6 +95,9 @@ export async function getShowDetails(sourceId) {
     note: show.rating?.average ?? null,
     genres: show.genres || [],
     air_status: show.status,
+    schedule_day: show.schedule?.days?.[0] || null,
+    schedule_time: show.schedule?.time || null,
+    runtime: show.averageRuntime ?? show.runtime ?? null,
     nb_seasons: seasons.length,
     nb_episodes: episodes.length,
     episodes: episodes.map((e) => ({
@@ -95,4 +108,15 @@ export async function getShowDetails(sourceId) {
       air_date: e.airdate,
     })),
   };
+}
+
+export async function getCast(sourceId) {
+  const data = await tvmazeFetch(`/shows/${sourceId}/cast`);
+  return data
+    .filter((c) => c.person && c.character)
+    .map((c) => ({
+      actor: c.person.name,
+      character: c.character.name,
+      photo: c.person.image?.medium || null,
+    }));
 }

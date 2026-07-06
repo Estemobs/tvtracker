@@ -1,4 +1,8 @@
-# 📺 TVTracker
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Estemobs/tvtracker/main/frontend/src/assets/logo.svg" width="72" height="72" alt="Logo TVTracker" />
+</p>
+
+<h1 align="center">TVTracker</h1>
 
 > Application web auto-hébergée de suivi de séries, animes et films — épisode par épisode, avec statistiques de visionnage. Pensée pour un petit groupe (famille/amis) : les inscriptions sont validées par l'administrateur.
 

@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import logo from '../assets/logo.svg';
 
 const items = [
   { to: '/series', label: 'Séries', icon: '📺' },
@@ -25,11 +26,26 @@ function NavItem({ to, label, icon, vertical }) {
 }
 
 export default function NavBar() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const allItems = user?.role === 'admin' ? [...items, { to: '/admin', label: 'Admin', icon: '🛠️' }] : items;
 
   return (
     <>
+      {/* Mobile top bar */}
+      <header className="sm:hidden fixed top-0 inset-x-0 z-40 bg-base-900/95 backdrop-blur border-b border-base-700 flex items-center justify-between px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <img src={logo} alt="TVTracker" className="w-7 h-7" />
+          <span className="font-bold text-white">TVTracker</span>
+        </div>
+        <button
+          onClick={logout}
+          title="Se déconnecter"
+          className="flex items-center gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors"
+        >
+          <span>🚪</span> Déconnexion
+        </button>
+      </header>
+
       {/* Mobile bottom nav */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-base-900/95 backdrop-blur border-t border-base-700 flex justify-around pb-[env(safe-area-inset-bottom)]">
         {allItems.map((it) => (
@@ -39,10 +55,20 @@ export default function NavBar() {
 
       {/* Desktop sidebar */}
       <nav className="hidden sm:flex flex-col gap-1 w-56 shrink-0 border-r border-base-700 bg-base-900 p-4 h-screen sticky top-0">
-        <div className="text-xl font-bold text-white px-4 mb-6">TVTracker</div>
+        <div className="flex items-center gap-2 px-4 mb-6">
+          <img src={logo} alt="TVTracker" className="w-8 h-8" />
+          <span className="text-xl font-bold text-white">TVTracker</span>
+        </div>
         {allItems.map((it) => (
           <NavItem key={it.to} {...it} />
         ))}
+        <button
+          onClick={logout}
+          className="mt-auto flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-white hover:bg-red-600 transition-colors"
+        >
+          <span className="text-lg">🚪</span>
+          Se déconnecter
+        </button>
       </nav>
     </>
   );

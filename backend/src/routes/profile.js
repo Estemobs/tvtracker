@@ -26,11 +26,15 @@ const upload = multer({
 });
 
 router.patch('/', (req, res) => {
-  const { username, email } = req.body || {};
+  const { username, email, language } = req.body || {};
   const updates = [];
   const values = [];
   if (username) { updates.push('username = ?'); values.push(username); }
   if (email) { updates.push('email = ?'); values.push(email); }
+  if (language) {
+    if (!['fr', 'en'].includes(language)) return res.status(400).json({ error: 'Langue invalide.' });
+    updates.push('language = ?'); values.push(language);
+  }
   if (!updates.length) return res.status(400).json({ error: 'Aucune modification fournie.' });
 
   try {

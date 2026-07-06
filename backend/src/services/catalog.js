@@ -12,11 +12,12 @@ export async function cacheShow(sourceId) {
   if (isStale) {
     const details = await tvmaze.getShowDetails(sourceId);
     const upsert = db.prepare(`
-      INSERT INTO shows (source, source_id, type, title, poster, backdrop, synopsis, note, genres, air_status, nb_seasons, nb_episodes, updated_at)
-      VALUES ('tvmaze', @source_id, @type, @title, @poster, @backdrop, @synopsis, @note, @genres, @air_status, @nb_seasons, @nb_episodes, datetime('now'))
+      INSERT INTO shows (source, source_id, type, title, poster, backdrop, synopsis, note, genres, air_status, schedule_day, schedule_time, runtime, nb_seasons, nb_episodes, updated_at)
+      VALUES ('tvmaze', @source_id, @type, @title, @poster, @backdrop, @synopsis, @note, @genres, @air_status, @schedule_day, @schedule_time, @runtime, @nb_seasons, @nb_episodes, datetime('now'))
       ON CONFLICT(source, source_id) DO UPDATE SET
         type=excluded.type, title=excluded.title, poster=excluded.poster, backdrop=excluded.backdrop,
         synopsis=excluded.synopsis, note=excluded.note, genres=excluded.genres, air_status=excluded.air_status,
+        schedule_day=excluded.schedule_day, schedule_time=excluded.schedule_time, runtime=excluded.runtime,
         nb_seasons=excluded.nb_seasons, nb_episodes=excluded.nb_episodes, updated_at=datetime('now')
     `);
     upsert.run({ ...details, genres: JSON.stringify(details.genres) });

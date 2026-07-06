@@ -41,7 +41,7 @@ function CompletedGrid({ title, items }) {
 }
 
 export default function Profile() {
-  const { user, setUser, logout } = useAuth();
+  const { user, setUser } = useAuth();
   const [stats, setStats] = useState(null);
   const [form, setForm] = useState({ username: user.username, email: user.email });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
@@ -83,6 +83,11 @@ export default function Profile() {
     setUser((prev) => ({ ...prev, avatar: data.avatar }));
   };
 
+  const changeLanguage = async (language) => {
+    setUser((prev) => ({ ...prev, language }));
+    await api.patch('/profile', { language });
+  };
+
   return (
     <div className="space-y-8 pb-8">
       <div className="flex items-center gap-4">
@@ -96,7 +101,6 @@ export default function Profile() {
           <h1 className="text-xl font-bold">{user.username}</h1>
           <p className="text-sm text-gray-400">{user.email}</p>
         </div>
-        <button onClick={logout} className="ml-auto text-sm text-red-400 hover:underline">Se déconnecter</button>
       </div>
 
       {stats && (
@@ -148,6 +152,19 @@ export default function Profile() {
           />
           <button className="bg-accent-600 hover:bg-accent-500 text-sm rounded-lg px-3 py-2 font-medium">Enregistrer</button>
         </form>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Langue des résumés</label>
+          <select
+            value={user.language || 'fr'}
+            onChange={(e) => changeLanguage(e.target.value)}
+            className="w-full rounded-lg bg-base-800 border border-base-600 px-3 py-2 text-sm"
+          >
+            <option value="fr">Français</option>
+            <option value="en">English</option>
+          </select>
+          <p className="text-xs text-gray-500 mt-1">S'applique aux résumés des séries et animes (traduction automatique).</p>
+        </div>
 
         <h2 className="text-sm font-semibold text-gray-400 mt-6">Changer le mot de passe</h2>
         <form onSubmit={changePassword} className="space-y-3">

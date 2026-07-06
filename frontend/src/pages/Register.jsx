@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client.js';
 
 export default function Register() {
-  const [form, setForm] = useState({ username: '', email: '', password: '', confirmPassword: '' });
+  const [form, setForm] = useState({ username: '', email: '', password: '', confirmPassword: '', website: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,6 +36,16 @@ export default function Register() {
           </div>
         ) : (
           <form onSubmit={onSubmit} className="space-y-4 bg-base-900 p-6 rounded-xl border border-base-700">
+            <input
+              type="text"
+              name="website"
+              value={form.website}
+              onChange={update('website')}
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              className="absolute w-px h-px opacity-0 overflow-hidden -z-10"
+            />
             <div>
               <label className="block text-sm text-gray-400 mb-1">Nom d'utilisateur</label>
               <input

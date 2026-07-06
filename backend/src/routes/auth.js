@@ -15,12 +15,30 @@ const loginLimiter = rateLimit({
   message: { error: 'Trop de tentatives, réessayez plus tard.' },
 });
 
+// Registration is a public, unauthenticated endpoint that writes to the DB — rate-limit harder
+// than login to prevent mass fake-account creation (per cahier des charges admin validation flow).
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de demandes d\'inscription depuis cette adresse, réessayez plus tard.' },
+});
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-router.post('/register', (req, res) => {
-  const { username, email, password, confirmPassword } = req.body || {};
+const SUCCESS_MESSAGE = 'Votre compte doit être approuvé par un administrateur avant de pouvoir vous connecter.';
+
+router.post('/register', registerLimiter, (req, res) => {
+  const { username, email, password, confirmPassword, website } = req.body || {};
+
+  // Honeypot: a hidden field real users never fill in, but bots blindly fill every input.
+  // Pretend success without creating anything, so scripted spam can't tell it was rejected.
+  if (website) {
+    return res.status(201).json({ message: SUCCESS_MESSAGE });
+  }
 
   if (!username || !email || !password || !confirmPassword) {
     return res.status(400).json({ error: 'Tous les champs sont requis.' });
@@ -46,7 +64,7 @@ router.post('/register', (req, res) => {
 
   res.status(201).json({
     id: info.lastInsertRowid,
-    message: 'Votre compte doit être approuvé par un administrateur avant de pouvoir vous connecter.',
+    message: SUCCESS_MESSAGE,
   });
 });
 
@@ -91,7 +109,7 @@ router.post('/login', loginLimiter, (req, res) => {
   const token = signToken(user);
   res.json({
     token,
-    user: { id: user.id, username: user.username, email: user.email, role: user.role, avatar: user.avatar },
+    user: { id: user.id, username: user.username, email: user.email, role: user.role, avatar: user.avatar, language: user.language },
   });
 });
 

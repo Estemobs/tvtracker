@@ -2,6 +2,22 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { cacheShow } from '../services/catalog.js';
+import * as tvmaze from '../services/tvmaze.js';
+import { translateToFrench } from '../services/translate.js';
+
+// TVmaze synopses are always in English; only that direction needs translating for
+// the French-language preference (Wikipedia/iTunes movie summaries are already fetched in French).
+async function localizedSynopsis(userShow, language) {
+  if (language !== 'fr' || !userShow.synopsis) return userShow.synopsis;
+  if (userShow.synopsis_fr) return userShow.synopsis_fr;
+  try {
+    const translated = await translateToFrench(userShow.synopsis);
+    db.prepare('UPDATE shows SET synopsis_fr = ? WHERE id = ?').run(translated, userShow.show_id);
+    return translated;
+  } catch {
+    return userShow.synopsis;
+  }
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -66,38 +82,51 @@ router.post('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get('/:showId', (req, res) => {
-  const { showId } = req.params;
-  const userShow = db.prepare(`SELECT us.*, s.* FROM user_shows us JOIN shows s ON s.id = us.show_id
-    WHERE us.user_id = ? AND us.show_id = ?`).get(req.user.id, showId);
-  if (!userShow) return res.status(404).json({ error: 'Série introuvable dans votre liste.' });
+router.get('/:showId', async (req, res, next) => {
+  try {
+    const { showId } = req.params;
+    const userShow = db.prepare(`SELECT us.*, s.* FROM user_shows us JOIN shows s ON s.id = us.show_id
+      WHERE us.user_id = ? AND us.show_id = ?`).get(req.user.id, showId);
+    if (!userShow) return res.status(404).json({ error: 'Série introuvable dans votre liste.' });
 
-  const episodes = db.prepare(`SELECT e.*, COALESCE(ue.watched, 0) as watched, ue.watched_at
-    FROM episodes e LEFT JOIN user_episodes ue ON ue.episode_id = e.id AND ue.user_id = ?
-    WHERE e.show_id = ? ORDER BY e.season, e.episode_number`).all(req.user.id, showId);
+    const episodes = db.prepare(`SELECT e.*, COALESCE(ue.watched, 0) as watched, ue.watched_at
+      FROM episodes e LEFT JOIN user_episodes ue ON ue.episode_id = e.id AND ue.user_id = ?
+      WHERE e.show_id = ? ORDER BY e.season, e.episode_number`).all(req.user.id, showId);
 
-  const seasons = {};
-  for (const ep of episodes) {
-    seasons[ep.season] = seasons[ep.season] || [];
-    seasons[ep.season].push(ep);
-  }
+    const seasons = {};
+    for (const ep of episodes) {
+      seasons[ep.season] = seasons[ep.season] || [];
+      seasons[ep.season].push(ep);
+    }
 
-  res.json({
-    show_id: userShow.show_id,
-    source_id: userShow.source_id,
-    type: userShow.type,
-    title: userShow.title,
-    poster: userShow.poster,
-    backdrop: userShow.backdrop,
-    synopsis: userShow.synopsis,
-    note: userShow.note,
-    genres: JSON.parse(userShow.genres || '[]'),
-    air_status: userShow.air_status,
-    status: userShow.status,
-    personal_rating: userShow.personal_rating,
-    personal_review: userShow.personal_review,
-    seasons: Object.entries(seasons).map(([season, eps]) => ({ season: Number(season), episodes: eps })),
-  });
+    const addedByCount = db.prepare('SELECT COUNT(*) c FROM user_shows WHERE show_id = ?').get(showId).c;
+    const [cast, synopsis] = await Promise.all([
+      tvmaze.getCast(userShow.source_id).catch(() => []),
+      localizedSynopsis(userShow, req.user.language),
+    ]);
+
+    res.json({
+      show_id: userShow.show_id,
+      source_id: userShow.source_id,
+      type: userShow.type,
+      title: userShow.title,
+      poster: userShow.poster,
+      backdrop: userShow.backdrop,
+      synopsis,
+      note: userShow.note,
+      genres: JSON.parse(userShow.genres || '[]'),
+      air_status: userShow.air_status,
+      schedule_day: userShow.schedule_day,
+      schedule_time: userShow.schedule_time,
+      runtime: userShow.runtime,
+      added_by_count: addedByCount,
+      cast,
+      status: userShow.status,
+      personal_rating: userShow.personal_rating,
+      personal_review: userShow.personal_review,
+      seasons: Object.entries(seasons).map(([season, eps]) => ({ season: Number(season), episodes: eps })),
+    });
+  } catch (e) { next(e); }
 });
 
 router.patch('/:showId/rating', (req, res) => {

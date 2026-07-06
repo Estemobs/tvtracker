@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 
+const DAYS_FR = {
+  Monday: 'Lun.', Tuesday: 'Mar.', Wednesday: 'Mer.', Thursday: 'Jeu.',
+  Friday: 'Ven.', Saturday: 'Sam.', Sunday: 'Dim.',
+};
+
 export default function SeriesDetail() {
   const { showId } = useParams();
   const navigate = useNavigate();
   const [show, setShow] = useState(null);
+  const [tab, setTab] = useState('about');
   const [openSeason, setOpenSeason] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -59,6 +65,10 @@ export default function SeriesDetail() {
     await api.patch(`/shows/${showId}/rating`, { personal_rating, personal_review: show.personal_review });
   };
 
+  const scheduleLabel = show.schedule_day && show.schedule_time
+    ? `${DAYS_FR[show.schedule_day] || show.schedule_day} ${show.schedule_time}`
+    : null;
+
   return (
     <div className="space-y-5 pb-8">
       {show.backdrop && (
@@ -85,25 +95,6 @@ export default function SeriesDetail() {
         </div>
       </div>
 
-      {show.synopsis && <p className="text-sm text-gray-300 leading-relaxed">{show.synopsis}</p>}
-
-      <div>
-        <label className="text-sm text-gray-400 block mb-1">Votre note (sur 10)</label>
-        <div className="flex gap-1">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <button
-              key={i}
-              onClick={() => rate(i + 1)}
-              className={`w-6 h-6 rounded text-xs font-medium ${
-                (show.personal_rating || 0) > i ? 'bg-accent-600 text-white' : 'bg-base-800 text-gray-500'
-              }`}
-            >
-              {i + 1}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div className="flex flex-wrap gap-2">
         <button
           onClick={markComplete}
@@ -120,55 +111,119 @@ export default function SeriesDetail() {
         </button>
       </div>
 
-      <div className="space-y-2">
-        {show.seasons.map((season) => {
-          const seasonWatched = season.episodes.every((e) => e.watched);
-          return (
-            <div key={season.season} className="border border-base-700 rounded-lg overflow-hidden">
-              <div className="flex items-center bg-base-900">
+      <div className="flex bg-base-800 rounded-lg p-0.5 border border-base-700 w-fit">
+        {[['about', 'À propos'], ['episodes', 'Épisodes']].map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setTab(v)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              tab === v ? 'bg-accent-600 text-white' : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'about' && (
+        <div className="space-y-5">
+          {show.synopsis && <p className="text-sm text-gray-300 leading-relaxed">{show.synopsis}</p>}
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+            {scheduleLabel && <span>📅 {scheduleLabel}</span>}
+            {show.runtime && <span>⏱️ {show.runtime} min</span>}
+            <span>👥 Ajoutée par {show.added_by_count} utilisateur{show.added_by_count > 1 ? 's' : ''}</span>
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-400 block mb-1">Votre note (sur 10)</label>
+            <div className="flex gap-1">
+              {Array.from({ length: 10 }).map((_, i) => (
                 <button
-                  onClick={() => setOpenSeason(openSeason === season.season ? null : season.season)}
-                  className="flex-1 flex items-center justify-between px-4 py-3 text-sm font-medium min-w-0"
-                >
-                  <span>Saison {season.season}</span>
-                  <span className="text-xs text-gray-400">
-                    {season.episodes.filter((e) => e.watched).length}/{season.episodes.length}
-                  </span>
-                </button>
-                <button
-                  onClick={() => toggleSeason(season.season, !seasonWatched)}
-                  disabled={busy}
-                  title={seasonWatched ? 'Décocher toute la saison' : 'Marquer toute la saison comme vue'}
-                  className={`shrink-0 mx-3 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 ${
-                    seasonWatched
-                      ? 'bg-accent-600 border-accent-600 text-white'
-                      : 'bg-base-800 border-base-600 text-gray-300 hover:border-accent-500 hover:text-accent-500'
+                  key={i}
+                  onClick={() => rate(i + 1)}
+                  className={`w-6 h-6 rounded text-xs font-medium ${
+                    (show.personal_rating || 0) > i ? 'bg-accent-600 text-white' : 'bg-base-800 text-gray-500'
                   }`}
                 >
-                  {seasonWatched ? 'Vue ✓' : 'Tout voir'}
+                  {i + 1}
                 </button>
-              </div>
-              {openSeason === season.season && (
-                <div className="divide-y divide-base-800">
-                  {season.episodes.map((ep) => (
-                    <label key={ep.id} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-base-800/40 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!ep.watched}
-                        onChange={(e) => toggleEpisode(ep.id, e.target.checked)}
-                        className="accent-accent-500 w-4 h-4"
-                      />
-                      <span className="text-gray-500 w-8 shrink-0">E{ep.episode_number}</span>
-                      <span className="flex-1 truncate">{ep.title}</span>
-                      {ep.duration && <span className="text-xs text-gray-500 shrink-0">{ep.duration} min</span>}
-                    </label>
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
-          );
-        })}
-      </div>
+          </div>
+
+          {show.cast?.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-400 mb-2">Distribution</h3>
+              <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3">
+                {show.cast.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-full bg-base-800 overflow-hidden shrink-0">
+                      {c.photo && <img src={c.photo} alt={c.actor} className="w-full h-full object-cover" />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium truncate">{c.actor}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{c.character}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'episodes' && (
+        <div className="space-y-2">
+          {show.seasons.map((season) => {
+            const seasonWatched = season.episodes.every((e) => e.watched);
+            return (
+              <div key={season.season} className="border border-base-700 rounded-lg overflow-hidden">
+                <div className="flex items-center bg-base-900">
+                  <button
+                    onClick={() => setOpenSeason(openSeason === season.season ? null : season.season)}
+                    className="flex-1 flex items-center justify-between px-4 py-3 text-sm font-medium min-w-0"
+                  >
+                    <span>Saison {season.season}</span>
+                    <span className="text-xs text-gray-400">
+                      {season.episodes.filter((e) => e.watched).length}/{season.episodes.length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => toggleSeason(season.season, !seasonWatched)}
+                    disabled={busy}
+                    title={seasonWatched ? 'Décocher toute la saison' : 'Marquer toute la saison comme vue'}
+                    className={`shrink-0 mx-3 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 ${
+                      seasonWatched
+                        ? 'bg-accent-600 border-accent-600 text-white'
+                        : 'bg-base-800 border-base-600 text-gray-300 hover:border-accent-500 hover:text-accent-500'
+                    }`}
+                  >
+                    {seasonWatched ? 'Vue ✓' : 'Tout voir'}
+                  </button>
+                </div>
+                {openSeason === season.season && (
+                  <div className="divide-y divide-base-800">
+                    {season.episodes.map((ep) => (
+                      <label key={ep.id} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-base-800/40 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!ep.watched}
+                          onChange={(e) => toggleEpisode(ep.id, e.target.checked)}
+                          className="accent-accent-500 w-4 h-4"
+                        />
+                        <span className="text-gray-500 w-8 shrink-0">E{ep.episode_number}</span>
+                        <span className="flex-1 truncate">{ep.title}</span>
+                        {ep.duration && <span className="text-xs text-gray-500 shrink-0">{ep.duration} min</span>}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -27,6 +27,9 @@ function ResultGrid({ results }) {
           </div>
           <div className="text-sm font-medium truncate">{r.title}</div>
           <div className="text-xs text-gray-400 -mt-1.5">{r.year} {r.note ? `· ⭐ ${r.note.toFixed(1)}` : ''}</div>
+          {r.nb_seasons ? (
+            <div className="text-[11px] text-gray-500 -mt-1.5">{r.nb_seasons} saison{r.nb_seasons > 1 ? 's' : ''}</div>
+          ) : null}
         </Link>
       ))}
     </div>

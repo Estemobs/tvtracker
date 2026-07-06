@@ -1,0 +1,3 @@
+ALTER TABLE shows ADD COLUMN schedule_day TEXT;
+ALTER TABLE shows ADD COLUMN schedule_time TEXT;
+ALTER TABLE shows ADD COLUMN runtime INTEGER;

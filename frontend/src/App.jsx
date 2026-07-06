@@ -32,7 +32,7 @@ function Layout({ children }) {
   return (
     <div className="flex min-h-screen">
       <NavBar />
-      <main className="flex-1 p-4 sm:p-6 pb-20 sm:pb-6 max-w-6xl mx-auto w-full">{children}</main>
+      <main className="flex-1 p-4 sm:p-6 pt-16 sm:pt-6 pb-20 sm:pb-6 max-w-6xl mx-auto w-full">{children}</main>
     </div>
   );
 }
