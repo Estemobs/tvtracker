@@ -107,9 +107,43 @@ docker compose -f docker-compose.prod.yml up -d
 - **Les données survivent à tout** : le volume `tvtracker_data` (SQLite + avatars) n'est jamais touché par une mise à jour.
 - **Rollback** : remplacer `latest` par un tag `sha-<commit>` dans le compose et relancer.
 - Le `docker-compose.yml` de base (build local) reste là pour le développement.
-
-**Vérifier la version déployée** : le commit exact tourne dans l'appli est visible en bas de la page Séries (cliquable vers GitHub), ou directement via `curl http://<serveur>:3000/api/version`. Pour comparer avec le dernier commit sur GitHub : [github.com/Estemobs/tvtracker/commits/main](https://github.com/Estemobs/tvtracker/commits/main).
 - Alternative à Watchtower : définir la variable de dépôt `DEPLOY_WEBHOOK_URL` dans GitHub (Settings → Secrets and variables → Actions → Variables) — le workflow appellera cette URL après chaque build pour déclencher un redéploiement immédiat côté hébergeur.
+
+### Mettre à jour l'instance
+
+**Première installation** (une seule fois, sur le serveur) :
+
+```bash
+mkdir -p /opt/tvtracker && cd /opt/tvtracker
+curl -o docker-compose.prod.yml https://raw.githubusercontent.com/Estemobs/tvtracker/main/docker-compose.prod.yml
+cat > .env <<'EOF'
+JWT_SECRET=...        # généré avec: openssl rand -hex 32
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=...
+ADMIN_PASSWORD=...
+EOF
+docker compose -f docker-compose.prod.yml up -d
+```
+
+**Après ça, c'est automatique** : chaque push sur `main` republie l'image sur GHCR, et Watchtower (lancé par ce même compose) la détecte et redéploie tout seul, en général dans les 5 minutes. Rien à refaire manuellement.
+
+**Si ça ne se met pas à jour**, vérifier d'abord les logs de Watchtower :
+
+```bash
+docker logs tvtracker-watchtower
+```
+
+Erreur connue : `client version 1.25 is too old. Minimum supported API version is 1.40` — l'image `containrrr/watchtower` embarque un vieux client Docker par défaut, incompatible avec les versions récentes du moteur Docker. Le `docker-compose.prod.yml` du dépôt fixe déjà `DOCKER_API_VERSION=1.41` pour corriger ça ; si l'erreur apparaît quand même, s'assurer d'avoir bien la dernière version du fichier compose (`curl` la commande ci-dessus à nouveau pour l'écraser) puis `docker compose -f docker-compose.prod.yml up -d` pour recréer Watchtower avec la bonne config.
+
+**Forcer une mise à jour immédiate** sans attendre Watchtower :
+
+```bash
+cd /opt/tvtracker   # ou le dossier où se trouve docker-compose.prod.yml
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+**Vérifier la version déployée** : le commit exact tourne dans l'appli est visible en bas de la page Séries (cliquable vers GitHub), ou directement via `curl http://<serveur>:3000/api/version`. Pour comparer avec le dernier commit sur GitHub : [github.com/Estemobs/tvtracker/commits/main](https://github.com/Estemobs/tvtracker/commits/main). Si les deux hash correspondent, l'instance est à jour.
 
 ## 🧑‍💻 Développement
 

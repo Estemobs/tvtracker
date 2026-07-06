@@ -29,6 +29,11 @@ services:
     image: containrrr/watchtower
     container_name: tvtracker-watchtower
     restart: unless-stopped
+    environment:
+      # Watchtower's bundled Docker client defaults to a very old API version (1.25) and
+      # some newer Docker Engine installs refuse anything below 1.40, causing every check
+      # to fail with "client version 1.25 is too old". Force a modern version explicitly.
+      - DOCKER_API_VERSION=1.41
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 --cleanup --label-enable
