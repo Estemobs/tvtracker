@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './httpRetry.js';
+
 const API_BASE = 'https://api.tvmaze.com';
 
 export const GENRES = [
@@ -13,7 +15,7 @@ function stripHtml(html) {
 }
 
 async function tvmazeFetch(pathname) {
-  const resp = await fetch(API_BASE + pathname);
+  const resp = await fetchWithRetry(API_BASE + pathname);
   if (resp.status === 404) {
     const err = new Error('Contenu introuvable.');
     err.status = 404;

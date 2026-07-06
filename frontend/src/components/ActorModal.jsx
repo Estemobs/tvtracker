@@ -46,25 +46,36 @@ export default function ActorModal({ personId, onClose }) {
             {actor.filmography?.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-gray-400 mb-2">Filmographie</h3>
-                <div className="grid grid-cols-3 xs:grid-cols-4 gap-3">
-                  {actor.filmography.map((f) => (
-                    <Link
-                      key={f.source_id}
-                      to={`/explorer/tv/tvmaze/${f.source_id}`}
-                      onClick={onClose}
-                      className="flex flex-col gap-1"
-                    >
-                      <div className="aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
-                        {f.poster ? (
-                          <img src={f.poster} alt={f.title} loading="lazy" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500 p-1 text-center">{f.title}</div>
-                        )}
-                      </div>
-                      <div className="text-[11px] truncate">{f.title}</div>
-                    </Link>
-                  ))}
-                </div>
+                {actor.filmography[0]?.source_id ? (
+                  <div className="grid grid-cols-3 xs:grid-cols-4 gap-3">
+                    {actor.filmography.map((f) => (
+                      <Link
+                        key={f.source_id}
+                        to={`/explorer/tv/tvmaze/${f.source_id}`}
+                        onClick={onClose}
+                        className="flex flex-col gap-1"
+                      >
+                        <div className="aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
+                          {f.poster ? (
+                            <img src={f.poster} alt={f.title} loading="lazy" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500 p-1 text-center">{f.title}</div>
+                          )}
+                        </div>
+                        <div className="text-[11px] truncate">{f.title}</div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <ul className="text-sm text-gray-300 space-y-1">
+                    {actor.filmography.map((f, i) => (
+                      <li key={i} className="flex justify-between">
+                        <span className="truncate">{f.title}</span>
+                        {f.year && <span className="text-gray-500 shrink-0 ml-2">{f.year}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
           </div>

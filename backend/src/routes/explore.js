@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import * as tvmaze from '../services/tvmaze.js';
 import * as itunes from '../services/itunes.js';
 import * as wikipedia from '../services/wikipedia.js';
+import * as wikidata from '../services/wikidata.js';
 import { enrichMovieWithWikidata } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -118,10 +119,14 @@ router.get('/movie/:source/:sourceId', async (req, res, next) => {
 
 router.get('/actor/:personId', async (req, res, next) => {
   try {
-    const [person, filmography] = await Promise.all([
-      tvmaze.getPerson(req.params.personId),
-      tvmaze.getPersonFilmography(req.params.personId),
-    ]);
+    const { personId } = req.params;
+    const isWikidataId = /^Q\d+$/.test(personId);
+
+    const [person, filmography] = isWikidataId
+      ? await Promise.all([wikidata.getPerson(personId), wikidata.getPersonFilmography(personId)])
+      : await Promise.all([tvmaze.getPerson(personId), tvmaze.getPersonFilmography(personId)]);
+
+    if (!person) return res.status(404).json({ error: 'Acteur introuvable.' });
     const bio = await wikipedia.getPersonBio(person.name).catch(() => null);
     res.json({ ...person, bio, filmography });
   } catch (e) { next(e); }

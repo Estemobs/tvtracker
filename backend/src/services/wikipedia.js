@@ -149,13 +149,17 @@ export async function getEnglishSummaryByTitle(title) {
   };
 }
 
-export async function findWikibaseItem(title) {
+// Used when a movie's primary source (iTunes) isn't Wikipedia itself, to cross-reference a
+// matching French article for its Wikidata item and, as a bonus already-fetched-for-free,
+// its platform mention (iTunes never tells us where a title streams; Wikipedia's lead often does).
+export async function findFrenchArticle(title) {
   try {
     const pages = await searchPages('https://fr.wikipedia.org', title, 5);
     const match = pages.find(looksLikeFilm);
     if (!match) return null;
     const summary = await getSummary('https://fr.wikipedia.org', match.key);
-    return summary?.wikibase_item || null;
+    if (!summary?.wikibase_item) return null;
+    return { wikibase_item: summary.wikibase_item, platform: extractPlatform(summary.extract) };
   } catch {
     return null;
   }

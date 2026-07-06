@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
+import ActorModal from '../../components/ActorModal.jsx';
 
 const DAYS_FR = {
   Monday: 'Lun.', Tuesday: 'Mar.', Wednesday: 'Mer.', Thursday: 'Jeu.',
@@ -18,6 +19,7 @@ export default function ExploreDetail() {
   const [details, setDetails] = useState(null);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [selectedActorId, setSelectedActorId] = useState(null);
 
   useEffect(() => {
     const endpoint = mediaType === 'movie' ? `/explore/movie/${source}/${sourceId}` : `/explore/tv/${sourceId}`;
@@ -126,7 +128,12 @@ export default function ExploreDetail() {
           <h3 className="text-sm font-semibold text-gray-400 mb-2">Distribution</h3>
           <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3">
             {details.cast.map((c, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <button
+                key={i}
+                onClick={() => c.person_id && setSelectedActorId(c.person_id)}
+                disabled={!c.person_id}
+                className="flex items-center gap-2 text-left hover:bg-base-800/50 rounded-lg p-1 -m-1 transition-colors disabled:hover:bg-transparent"
+              >
                 {c.photo && (
                   <div className="w-9 h-9 rounded-full bg-base-800 overflow-hidden shrink-0">
                     <img src={c.photo} alt={c.actor} className="w-full h-full object-cover" />
@@ -136,10 +143,14 @@ export default function ExploreDetail() {
                   <div className="text-xs font-medium truncate">{c.actor}</div>
                   {c.character && <div className="text-[11px] text-gray-500 truncate">{c.character}</div>}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
+      )}
+
+      {selectedActorId && (
+        <ActorModal personId={selectedActorId} onClose={() => setSelectedActorId(null)} />
       )}
     </div>
   );

@@ -41,12 +41,19 @@ export async function cacheShow(sourceId) {
 }
 
 // Wikidata cross-referencing: fills gaps the primary source (Wikipedia/iTunes) left empty —
-// cast list, an IMDb-scale rating, and a poster (checking the Wikidata image claim, then
-// falling back to the English Wikipedia article via its exact Wikidata sitelink — never a
-// fuzzy title search, to avoid attaching an unrelated film's poster).
+// cast list (with actor photos), a normalized rating, a platform mention, an upcoming sequel,
+// and a poster (Wikidata's own image claim, then the English Wikipedia article via its exact
+// Wikidata sitelink — never a fuzzy title search, to avoid attaching an unrelated film's poster).
 export async function enrichMovieWithWikidata(details) {
-  const wikibaseItem = details.wikibase_item || await wikipedia.findWikibaseItem(details.title);
-  if (!wikibaseItem) return { ...details, cast: [] };
+  let wikibaseItem = details.wikibase_item;
+  let platform = details.platform;
+
+  if (!wikibaseItem) {
+    const frenchArticle = await wikipedia.findFrenchArticle(details.title).catch(() => null);
+    wikibaseItem = frenchArticle?.wikibase_item || null;
+    platform = platform || frenchArticle?.platform || null;
+  }
+  if (!wikibaseItem) return { ...details, platform, cast: [] };
 
   const [{ cast, rating }, nextInstallment] = await Promise.all([
     wikidata.getCastAndRating(wikibaseItem).catch(() => ({ cast: [], rating: null })),
@@ -64,12 +71,23 @@ export async function enrichMovieWithWikidata(details) {
     }
   }
 
-  return { ...details, poster, note: details.note ?? rating, cast, next_installment: nextInstallment };
+  return {
+    ...details,
+    poster,
+    platform,
+    note: details.note ?? rating?.value ?? null,
+    cast,
+    next_installment: nextInstallment,
+  };
 }
 
 export async function cacheMovie(source, sourceId) {
   let movie = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, String(sourceId));
-  const isStale = !movie || Date.now() - new Date(movie.updated_at + 'Z').getTime() > STALE_MS;
+  // Treat a movie missing its poster or cast as stale regardless of age: an empty result more
+  // often means a past fetch failed (rate limit, momentary network issue) than that the source
+  // genuinely has nothing — worth retrying on the next view rather than sitting incomplete for a day.
+  const isIncomplete = movie && (!movie.poster || movie.cast_json === '[]' || !movie.cast_json);
+  const isStale = !movie || isIncomplete || Date.now() - new Date(movie.updated_at + 'Z').getTime() > STALE_MS;
 
   if (isStale) {
     const baseDetails = source === 'itunes'
