@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import logo from '../assets/logo.svg';
@@ -25,6 +26,29 @@ function NavItem({ to, label, icon, vertical }) {
   );
 }
 
+function VersionLink({ className }) {
+  const [version, setVersion] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/version').then((r) => r.json()).then((d) => setVersion(d.version)).catch(() => {});
+  }, []);
+
+  if (!version) return null;
+  if (version === 'dev') return <span className={className}>dev</span>;
+
+  return (
+    <a
+      href={`https://github.com/Estemobs/tvtracker/commit/${version}`}
+      target="_blank"
+      rel="noreferrer"
+      className={`${className} hover:text-gray-400 hover:underline`}
+      title="Voir ce commit sur GitHub"
+    >
+      {version.slice(0, 7)}
+    </a>
+  );
+}
+
 export default function NavBar() {
   const { user, logout } = useAuth();
   const allItems = user?.role === 'admin' ? [...items, { to: '/admin', label: 'Admin', icon: '🛠️' }] : items;
@@ -37,13 +61,16 @@ export default function NavBar() {
           <img src={logo} alt="TVTracker" className="w-7 h-7" />
           <span className="font-bold text-white">TVTracker</span>
         </div>
-        <button
-          onClick={logout}
-          title="Se déconnecter"
-          className="flex items-center gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors"
-        >
-          <span>🚪</span> Déconnexion
-        </button>
+        <div className="flex items-center gap-2">
+          <VersionLink className="text-[10px] text-gray-600" />
+          <button
+            onClick={logout}
+            title="Se déconnecter"
+            className="flex items-center gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors"
+          >
+            <span>🚪</span> Déconnexion
+          </button>
+        </div>
       </header>
 
       {/* Mobile bottom nav */}
@@ -62,13 +89,16 @@ export default function NavBar() {
         {allItems.map((it) => (
           <NavItem key={it.to} {...it} />
         ))}
-        <button
-          onClick={logout}
-          className="mt-auto flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-white hover:bg-red-600 transition-colors"
-        >
-          <span className="text-lg">🚪</span>
-          Se déconnecter
-        </button>
+        <div className="mt-auto flex items-center gap-2 px-4">
+          <button
+            onClick={logout}
+            className="flex-1 flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-white hover:bg-red-600 transition-colors"
+          >
+            <span className="text-lg">🚪</span>
+            Se déconnecter
+          </button>
+          <VersionLink className="text-[10px] text-gray-600 shrink-0" />
+        </div>
       </nav>
     </>
   );

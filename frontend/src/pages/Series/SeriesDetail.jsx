@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
+import ActorModal from '../../components/ActorModal.jsx';
 
 const DAYS_FR = {
   Monday: 'Lun.', Tuesday: 'Mar.', Wednesday: 'Mer.', Thursday: 'Jeu.',
@@ -12,6 +13,7 @@ export default function SeriesDetail() {
   const navigate = useNavigate();
   const [show, setShow] = useState(null);
   const [tab, setTab] = useState('about');
+  const [selectedActorId, setSelectedActorId] = useState(null);
   const [openSeason, setOpenSeason] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -157,7 +159,11 @@ export default function SeriesDetail() {
               <h3 className="text-sm font-semibold text-gray-400 mb-2">Distribution</h3>
               <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3">
                 {show.cast.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2">
+                  <button
+                    key={i}
+                    onClick={() => setSelectedActorId(c.person_id)}
+                    className="flex items-center gap-2 text-left hover:bg-base-800/50 rounded-lg p-1 -m-1 transition-colors"
+                  >
                     <div className="w-9 h-9 rounded-full bg-base-800 overflow-hidden shrink-0">
                       {c.photo && <img src={c.photo} alt={c.actor} className="w-full h-full object-cover" />}
                     </div>
@@ -165,7 +171,7 @@ export default function SeriesDetail() {
                       <div className="text-xs font-medium truncate">{c.actor}</div>
                       <div className="text-[11px] text-gray-500 truncate">{c.character}</div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -223,6 +229,10 @@ export default function SeriesDetail() {
             );
           })}
         </div>
+      )}
+
+      {selectedActorId && (
+        <ActorModal personId={selectedActorId} onClose={() => setSelectedActorId(null)} />
       )}
     </div>
   );

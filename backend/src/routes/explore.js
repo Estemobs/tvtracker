@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import * as tvmaze from '../services/tvmaze.js';
 import * as itunes from '../services/itunes.js';
 import * as wikipedia from '../services/wikipedia.js';
+import { enrichMovieWithWikidata } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -68,10 +69,18 @@ router.get('/genres/:mediaType', (req, res) => {
 
 router.get('/tv/:sourceId', async (req, res, next) => {
   try {
-    const details = await tvmaze.getShowDetails(req.params.sourceId);
-    const already = db.prepare(`SELECT 1 FROM user_shows us JOIN shows s ON s.id = us.show_id
-      WHERE us.user_id = ? AND s.source = 'tvmaze' AND s.source_id = ?`).get(req.user.id, req.params.sourceId);
-    res.json({ ...details, already_added: !!already });
+    const [details, cast] = await Promise.all([
+      tvmaze.getShowDetails(req.params.sourceId),
+      tvmaze.getCast(req.params.sourceId).catch(() => []),
+    ]);
+    const cachedShow = db.prepare(`SELECT id FROM shows WHERE source = 'tvmaze' AND source_id = ?`).get(req.params.sourceId);
+    const addedByCount = cachedShow
+      ? db.prepare('SELECT COUNT(*) c FROM user_shows WHERE show_id = ?').get(cachedShow.id).c
+      : 0;
+    const already = cachedShow
+      ? db.prepare(`SELECT 1 FROM user_shows WHERE user_id = ? AND show_id = ?`).get(req.user.id, cachedShow.id)
+      : null;
+    res.json({ ...details, cast, added_by_count: addedByCount, already_added: !!already });
   } catch (e) { next(e); }
 });
 
@@ -79,12 +88,31 @@ router.get('/movie/:source/:sourceId', async (req, res, next) => {
   try {
     const { source, sourceId } = req.params;
     if (!['itunes', 'wikipedia'].includes(source)) return res.status(400).json({ error: 'Source invalide.' });
-    const details = source === 'itunes'
+    const baseDetails = source === 'itunes'
       ? await itunes.getMovieDetails(sourceId)
       : await wikipedia.getMovieSummary(sourceId);
-    const already = db.prepare(`SELECT 1 FROM user_movies um JOIN movies m ON m.id = um.movie_id
-      WHERE um.user_id = ? AND m.source = ? AND m.source_id = ?`).get(req.user.id, source, sourceId);
-    res.json({ ...details, already_added: !!already });
+    const details = await enrichMovieWithWikidata(baseDetails);
+
+    const cachedMovie = db.prepare('SELECT id FROM movies WHERE source = ? AND source_id = ?').get(source, sourceId);
+    const addedByCount = cachedMovie
+      ? db.prepare('SELECT COUNT(*) c FROM user_movies WHERE movie_id = ?').get(cachedMovie.id).c
+      : 0;
+    const already = cachedMovie
+      ? db.prepare(`SELECT 1 FROM user_movies WHERE user_id = ? AND movie_id = ?`).get(req.user.id, cachedMovie.id)
+      : null;
+
+    res.json({ ...details, added_by_count: addedByCount, already_added: !!already });
+  } catch (e) { next(e); }
+});
+
+router.get('/actor/:personId', async (req, res, next) => {
+  try {
+    const [person, filmography] = await Promise.all([
+      tvmaze.getPerson(req.params.personId),
+      tvmaze.getPersonFilmography(req.params.personId),
+    ]);
+    const bio = await wikipedia.getPersonBio(person.name).catch(() => null);
+    res.json({ ...person, bio, filmography });
   } catch (e) { next(e); }
 });
 

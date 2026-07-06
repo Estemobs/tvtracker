@@ -143,7 +143,7 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-**Vérifier la version déployée** : le commit exact tourne dans l'appli est visible en bas de la page Séries (cliquable vers GitHub), ou directement via `curl http://<serveur>:3000/api/version`. Pour comparer avec le dernier commit sur GitHub : [github.com/Estemobs/tvtracker/commits/main](https://github.com/Estemobs/tvtracker/commits/main). Si les deux hash correspondent, l'instance est à jour.
+**Vérifier la version déployée** : le commit exact tourne dans l'appli est visible dans la barre latérale, juste à côté de « Se déconnecter » (cliquable vers GitHub), ou directement via `curl http://<serveur>:3000/api/version`. Pour comparer avec le dernier commit sur GitHub : [github.com/Estemobs/tvtracker/commits/main](https://github.com/Estemobs/tvtracker/commits/main). Si les deux hash correspondent, l'instance est à jour.
 
 ## 🧑‍💻 Développement
 

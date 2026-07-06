@@ -50,6 +50,7 @@ router.get('/:movieId', (req, res) => {
   const row = db.prepare(`SELECT um.*, m.* FROM user_movies um JOIN movies m ON m.id = um.movie_id
     WHERE um.user_id = ? AND um.movie_id = ?`).get(req.user.id, req.params.movieId);
   if (!row) return res.status(404).json({ error: 'Film introuvable dans votre liste.' });
+  const addedByCount = db.prepare('SELECT COUNT(*) c FROM user_movies WHERE movie_id = ?').get(row.movie_id).c;
   res.json({
     movie_id: row.movie_id,
     source: row.source,
@@ -62,6 +63,8 @@ router.get('/:movieId', (req, res) => {
     note: row.note,
     genres: JSON.parse(row.genres || '[]'),
     release_date: row.release_date,
+    cast: JSON.parse(row.cast_json || '[]'),
+    added_by_count: addedByCount,
     status: row.status,
     personal_rating: row.personal_rating,
   });

@@ -115,8 +115,39 @@ export async function getCast(sourceId) {
   return data
     .filter((c) => c.person && c.character)
     .map((c) => ({
+      person_id: c.person.id,
       actor: c.person.name,
       character: c.character.name,
       photo: c.person.image?.medium || null,
     }));
+}
+
+export async function getPerson(personId) {
+  const person = await tvmazeFetch(`/people/${personId}`);
+  return {
+    person_id: person.id,
+    name: person.name,
+    photo: person.image?.original || person.image?.medium || null,
+    country: person.country?.name || null,
+    birthday: person.birthday || null,
+  };
+}
+
+export async function getPersonFilmography(personId) {
+  const data = await tvmazeFetch(`/people/${personId}/castcredits?embed=show`);
+  const seen = new Set();
+  const credits = [];
+  for (const credit of data) {
+    const show = credit._embedded?.show;
+    if (!show || seen.has(show.id)) continue;
+    seen.add(show.id);
+    credits.push({
+      source_id: String(show.id),
+      title: show.name,
+      poster: show.image?.medium || show.image?.original || null,
+      character: credit._links?.character?.name || null,
+      year: (show.premiered || '').slice(0, 4),
+    });
+  }
+  return credits.sort((a, b) => (b.year || '').localeCompare(a.year || ''));
 }

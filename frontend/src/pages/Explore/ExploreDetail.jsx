@@ -52,6 +52,12 @@ export default function ExploreDetail() {
 
       {details.synopsis && <p className="text-sm text-gray-300 leading-relaxed">{details.synopsis}</p>}
 
+      {details.added_by_count > 0 && (
+        <p className="text-xs text-gray-400">
+          👥 Ajouté par {details.added_by_count} utilisateur{details.added_by_count > 1 ? 's' : ''}
+        </p>
+      )}
+
       <button
         onClick={addToList}
         disabled={adding || details.already_added}
@@ -59,6 +65,27 @@ export default function ExploreDetail() {
       >
         {details.already_added ? 'Déjà ajouté ✓' : adding ? 'Ajout…' : 'Ajouter à ma liste'}
       </button>
+
+      {details.cast?.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-400 mb-2">Distribution</h3>
+          <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3">
+            {details.cast.map((c, i) => (
+              <div key={i} className="flex items-center gap-2">
+                {c.photo && (
+                  <div className="w-9 h-9 rounded-full bg-base-800 overflow-hidden shrink-0">
+                    <img src={c.photo} alt={c.actor} className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="text-xs font-medium truncate">{c.actor}</div>
+                  {c.character && <div className="text-[11px] text-gray-500 truncate">{c.character}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
