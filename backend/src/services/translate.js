@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './httpRetry.js';
+
 const API_BASE = 'https://api.mymemory.translated.net/get';
 const MAX_CHUNK = 480; // MyMemory's anonymous tier hard-caps queries at 500 chars
 
@@ -21,7 +23,7 @@ async function translateChunk(text, langpair) {
   const url = new URL(API_BASE);
   url.searchParams.set('q', text);
   url.searchParams.set('langpair', langpair);
-  const resp = await fetch(url);
+  const resp = await fetchWithRetry(url);
   if (!resp.ok) throw new Error(`Erreur de traduction (${resp.status})`);
   const data = await resp.json();
   if (data.responseStatus !== 200 || !data.responseData?.translatedText) {

@@ -47,6 +47,10 @@ export default function Profile() {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importError, setImportError] = useState('');
+  const [showNotFound, setShowNotFound] = useState(false);
 
   useEffect(() => { api.get('/profile/stats').then(setStats); }, []);
 
@@ -86,6 +90,27 @@ export default function Profile() {
   const changeLanguage = async (language) => {
     setUser((prev) => ({ ...prev, language }));
     await api.patch('/profile', { language });
+  };
+
+  const importTvTime = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    setImportError('');
+    setImportResult(null);
+    setShowNotFound(false);
+    try {
+      const fd = new FormData();
+      fd.append('archive', file);
+      const result = await api.postForm('/profile/import/tvtime', fd);
+      setImportResult(result);
+      api.get('/profile/stats').then(setStats);
+    } catch (err) {
+      setImportError(err.message);
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
@@ -187,6 +212,57 @@ export default function Profile() {
 
         {message && <p className="text-sm text-green-400">{message}</p>}
         {error && <p className="text-sm text-red-400">{error}</p>}
+      </section>
+
+      <section className="space-y-3 max-w-lg">
+        <h2 className="text-sm font-semibold text-gray-400">Importer depuis TV Time</h2>
+        <p className="text-xs text-gray-500">
+          Récupère ton historique TV Time (séries, épisodes vus, films vus et à voir) à partir de
+          l'export RGPD téléchargé sur{' '}
+          <a href="https://gdpr.tvtime.com/gdpr/self-service" target="_blank" rel="noreferrer" className="text-accent-500 hover:underline">
+            gdpr.tvtime.com
+          </a>{' '}
+          (le fichier .zip téléchargé, sans le décompresser). L'import peut prendre plusieurs
+          minutes selon la taille de ton historique — reste sur cette page en attendant.
+        </p>
+
+        <label className={`inline-block ${importing ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+          <span className="bg-accent-600 hover:bg-accent-500 text-sm rounded-lg px-3 py-2 font-medium inline-block">
+            {importing ? 'Import en cours…' : 'Choisir le fichier .zip'}
+          </span>
+          <input type="file" accept=".zip,application/zip" className="hidden" onChange={importTvTime} disabled={importing} />
+        </label>
+
+        {importError && <p className="text-sm text-red-400">{importError}</p>}
+
+        {importResult && (
+          <div className="bg-base-900 border border-base-700 rounded-lg p-4 space-y-2 text-sm">
+            <p className="text-green-400 font-medium">Import terminé.</p>
+            <ul className="text-gray-300 space-y-1">
+              <li>📺 {importResult.shows_imported} série{importResult.shows_imported > 1 ? 's' : ''} importée{importResult.shows_imported > 1 ? 's' : ''} ({importResult.episodes_imported} épisode{importResult.episodes_imported > 1 ? 's' : ''} coché{importResult.episodes_imported > 1 ? 's' : ''})</li>
+              <li>🎬 {importResult.movies_imported} film{importResult.movies_imported > 1 ? 's' : ''} vu{importResult.movies_imported > 1 ? 's' : ''} importé{importResult.movies_imported > 1 ? 's' : ''}</li>
+              <li>📋 {importResult.movies_to_watch_imported} film{importResult.movies_to_watch_imported > 1 ? 's' : ''} à voir importé{importResult.movies_to_watch_imported > 1 ? 's' : ''}</li>
+            </ul>
+            {(importResult.shows_not_found.length > 0 || importResult.movies_not_found.length > 0) && (
+              <div className="pt-2 border-t border-base-800">
+                <button onClick={() => setShowNotFound((v) => !v)} className="text-xs text-accent-500 hover:underline">
+                  {importResult.shows_not_found.length + importResult.movies_not_found.length} contenu(s) non retrouvé(s) {showNotFound ? '▲' : '▼'}
+                </button>
+                {showNotFound && (
+                  <ul className="text-xs text-gray-500 mt-2 space-y-0.5 max-h-40 overflow-y-auto">
+                    {[...importResult.shows_not_found, ...importResult.movies_not_found].map((name, i) => (
+                      <li key={i}>{name}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  Réessaie l'import plus tard pour ces titres : certains échecs viennent de limites
+                  temporaires des sources de données, pas d'une absence réelle.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

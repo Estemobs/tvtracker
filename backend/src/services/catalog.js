@@ -81,7 +81,11 @@ export async function enrichMovieWithWikidata(details) {
   };
 }
 
-export async function cacheMovie(source, sourceId) {
+// `skipEnrichment` is used by the bulk TV Time import: cross-referencing Wikidata for cast/
+// rating/poster-fallback on hundreds of movies in one go would make the import take much
+// longer for no immediate benefit — the "incomplete" staleness check below already re-triggers
+// full enrichment the first time the user actually opens that movie's page.
+export async function cacheMovie(source, sourceId, { skipEnrichment = false } = {}) {
   let movie = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, String(sourceId));
   // Treat a movie missing its poster or cast as stale regardless of age: an empty result more
   // often means a past fetch failed (rate limit, momentary network issue) than that the source
@@ -93,7 +97,7 @@ export async function cacheMovie(source, sourceId) {
     const baseDetails = source === 'itunes'
       ? await itunes.getMovieDetails(sourceId)
       : await wikipedia.getMovieSummary(sourceId);
-    const details = await enrichMovieWithWikidata(baseDetails);
+    const details = skipEnrichment ? { ...baseDetails, cast: [] } : await enrichMovieWithWikidata(baseDetails);
 
     const upsert = db.prepare(`
       INSERT INTO movies (source, source_id, title, poster, backdrop, synopsis, duration, note, genres, release_date, platform, cast_json, next_installment_json, updated_at)

@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './httpRetry.js';
+
 const LOOKUP_URL = 'https://itunes.apple.com/lookup';
 const CHART_URL = 'https://itunes.apple.com/fr/rss/topmovies/limit=40/json';
 
@@ -22,7 +24,7 @@ function mapChartEntry(entry) {
 }
 
 export async function topMovies() {
-  const resp = await fetch(CHART_URL);
+  const resp = await fetchWithRetry(CHART_URL);
   if (!resp.ok) {
     const err = new Error(`Erreur iTunes (${resp.status})`);
     err.status = 502;
@@ -37,7 +39,7 @@ export async function getMovieDetails(sourceId) {
   const url = new URL(LOOKUP_URL);
   url.searchParams.set('id', sourceId);
   url.searchParams.set('country', 'FR');
-  const resp = await fetch(url);
+  const resp = await fetchWithRetry(url);
   if (!resp.ok) {
     const err = new Error(`Erreur iTunes (${resp.status})`);
     err.status = 502;

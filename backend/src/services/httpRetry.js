@@ -1,18 +1,46 @@
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+const MAX_RETRY_DELAY_MS = 3000;
+const REQUEST_TIMEOUT_MS = 12000;
 
 // Wikipedia/Wikidata/TVmaze occasionally return a transient 429/5xx under load. Without a
 // retry, that single hiccup gets treated as "this show/movie genuinely has no cast/poster"
 // and cached as such for a full day (see STALE_MS) — a couple of short retries turns a
 // rare transient failure into a non-issue instead of visibly degraded content.
-export async function fetchWithRetry(url, options = {}, retries = 2) {
+//
+// Plain fetch() has no timeout: a single connection that never resolves (dropped packet,
+// a proxy silently swallowing the request) hangs that call — and everything sequenced after
+// it — forever. A bulk import doing hundreds of these sequentially turned that from a
+// theoretical risk into an observed multi-minute stall, so every attempt gets a hard cap.
+export async function fetchWithRetry(url, options = {}, retries = 4) {
   let lastResp;
+  let lastError;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const resp = await fetch(url, options);
-    if (resp.ok || !RETRYABLE_STATUSES.has(resp.status)) return resp;
-    lastResp = resp;
-    if (attempt < retries) {
-      await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const resp = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      if (resp.ok || !RETRYABLE_STATUSES.has(resp.status)) return resp;
+      lastResp = resp;
+      if (attempt < retries) {
+        // Wikimedia sometimes asks for a very long Retry-After (a minute+) after a burst of
+        // requests — honoring that literally would make a single item block the whole import
+        // for minutes. Cap it: better to fail this one item fast and let the "incomplete
+        // cache" retry logic pick it up again later than to stall everything else behind it.
+        const retryAfter = Number(resp.headers.get('retry-after'));
+        const delay = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, MAX_RETRY_DELAY_MS)
+          : 500 * 2 ** attempt;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    } catch (e) {
+      clearTimeout(timer);
+      lastError = e;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+      }
     }
   }
-  return lastResp;
+  if (lastResp) return lastResp;
+  throw lastError;
 }

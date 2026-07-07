@@ -31,20 +31,10 @@ router.get('/search', async (req, res, next) => {
     if (!q) return res.json({ results: [] });
     const [shows, movies] = await Promise.all([
       tvmaze.searchShows(q).catch(() => []),
-      wikipedia.searchMovies(q).catch(() => []),
+      wikipedia.searchMoviesAnyLanguage(q).catch(() => []),
     ]);
 
-    // French Wikipedia search already resolves most English titles via redirects; only fall
-    // back to searching English Wikipedia (then mapping back to the French article) when the
-    // direct search came up thin, to avoid doubling API calls on every ordinary search.
-    let allMovies = movies;
-    if (movies.length < 3) {
-      const englishMatches = await wikipedia.searchMoviesEnglishFallback(q).catch(() => []);
-      const seen = new Set(movies.map((m) => m.source_id));
-      allMovies = [...movies, ...englishMatches.filter((m) => !seen.has(m.source_id))];
-    }
-
-    res.json({ results: annotateAdded(req, [...shows, ...allMovies]) });
+    res.json({ results: annotateAdded(req, [...shows, ...movies]) });
   } catch (e) { next(e); }
 });
 

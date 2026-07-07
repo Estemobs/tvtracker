@@ -33,6 +33,17 @@ function isAnime(show) {
   return (show.genres || []).includes('Anime');
 }
 
+// TV Time (and most other trackers) key shows by TheTVDB id — TVmaze's lookup endpoint
+// resolves that directly, no fuzzy title search needed for imported data.
+export async function findByTvdbId(tvdbId) {
+  try {
+    const show = await tvmazeFetch(`/lookup/shows?thetvdb=${tvdbId}`);
+    return show ? String(show.id) : null;
+  } catch {
+    return null;
+  }
+}
+
 function mapShow(show) {
   return {
     source: 'tvmaze',

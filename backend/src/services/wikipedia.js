@@ -1,4 +1,5 @@
 import * as wikidata from './wikidata.js';
+import { fetchWithRetry } from './httpRetry.js';
 
 const HEADERS = { 'User-Agent': 'TVTracker/1.0 (self-hosted watch tracker; no contact url)' };
 const FILM_DESCRIPTION = /^(film|long[\s-]m[ée]trage)\b/i;
@@ -45,7 +46,7 @@ async function searchPages(base, query, limit = 20) {
   const url = new URL(`${base}/w/rest.php/v1/search/page`);
   url.searchParams.set('q', query);
   url.searchParams.set('limit', String(limit));
-  const resp = await fetch(url, { headers: HEADERS });
+  const resp = await fetchWithRetry(url, { headers: HEADERS });
   if (!resp.ok) {
     const err = new Error(`Erreur Wikipédia (${resp.status})`);
     err.status = 502;
@@ -56,7 +57,7 @@ async function searchPages(base, query, limit = 20) {
 }
 
 async function getSummary(base, key) {
-  const resp = await fetch(`${base}/api/rest_v1/page/summary/${encodeURIComponent(key)}`, { headers: HEADERS });
+  const resp = await fetchWithRetry(`${base}/api/rest_v1/page/summary/${encodeURIComponent(key)}`, { headers: HEADERS });
   if (resp.status === 404) return null;
   if (!resp.ok) {
     const err = new Error(`Erreur Wikipédia (${resp.status})`);
@@ -76,7 +77,7 @@ async function getSynopsisSection(base, key) {
     sectionsUrl.searchParams.set('page', key);
     sectionsUrl.searchParams.set('prop', 'sections');
     sectionsUrl.searchParams.set('format', 'json');
-    const sectionsResp = await fetch(sectionsUrl, { headers: HEADERS });
+    const sectionsResp = await fetchWithRetry(sectionsUrl, { headers: HEADERS });
     if (!sectionsResp.ok) return null;
     const sectionsData = await sectionsResp.json();
     const section = sectionsData.parse?.sections?.find((s) => SYNOPSIS_SECTION.test(s.line));
@@ -88,7 +89,7 @@ async function getSynopsisSection(base, key) {
     textUrl.searchParams.set('prop', 'text');
     textUrl.searchParams.set('section', section.index);
     textUrl.searchParams.set('format', 'json');
-    const textResp = await fetch(textUrl, { headers: HEADERS });
+    const textResp = await fetchWithRetry(textUrl, { headers: HEADERS });
     if (!textResp.ok) return null;
     const textData = await textResp.json();
     const html = textData.parse?.text?.['*'];
@@ -139,6 +140,17 @@ export async function getMovieSummary(sourceId) {
     duration: null,
     release_date: extractYear(data.description, data.title) || null,
   };
+}
+
+// French Wikipedia search already resolves most English-titled queries via redirects; only
+// when it comes up thin do we also check English Wikipedia (mapped back to French — see
+// searchMoviesEnglishFallback for why never a fuzzy match).
+export async function searchMoviesAnyLanguage(query) {
+  const primary = await searchMovies(query);
+  if (primary.length >= 3) return primary;
+  const englishMatches = await searchMoviesEnglishFallback(query).catch(() => []);
+  const seen = new Set(primary.map((m) => m.source_id));
+  return [...primary, ...englishMatches.filter((m) => !seen.has(m.source_id))];
 }
 
 export async function getEnglishSummaryByTitle(title) {

@@ -45,6 +45,11 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Erreur serveur.' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[tvtracker] backend listening on port ${PORT}`);
 });
+
+// The TV Time import processes hundreds of shows/movies against external APIs and can take
+// several minutes — Node's default 5-minute request timeout would otherwise kill it mid-import.
+server.requestTimeout = 0;
+server.headersTimeout = 0;

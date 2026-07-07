@@ -17,7 +17,7 @@
 | **📺 Séries** | Suivi épisode par épisode ou saison entière en un clic, barre de progression, filtres (en cours / terminées, séries / animes), note personnelle |
 | **🎬 Films** | Liste à voir / vu, bascule en un clic, note personnelle |
 | **🔍 Explorer** | Recherche en temps réel (séries, animes, films), tendances, ajout à sa liste, badge « Déjà ajouté » |
-| **👤 Profil** | Temps de visionnage total et par type, top contenus, grilles des terminés, édition avatar/e-mail/mot de passe |
+| **👤 Profil** | Temps de visionnage total et par type, top contenus, grilles des terminés, édition avatar/e-mail/mot de passe, import de l'historique TV Time |
 | **🛠️ Admin** | Validation/refus des inscriptions, désactivation/suppression de comptes |
 
 Interface **mobile-first** (navigation en bas d'écran sur téléphone, sidebar sur desktop), thème sombre, chargement paresseux des affiches.
@@ -55,6 +55,10 @@ Interface **mobile-first** (navigation en bas d'écran sur téléphone, sidebar 
 | Films — tendances | [iTunes](https://itunes.apple.com) | Classement officiel des films (l'API de *recherche* films d'iTunes a été désactivée par Apple, seuls lookup et charts fonctionnent) |
 
 Compromis assumé : certains films n'ont pas de durée, genre ou note publique selon la source — c'est le prix de l'absence totale de clé d'API.
+
+### Import de l'historique TV Time
+
+Page **Profil → Importer depuis TV Time** : charge le fichier `.zip` de l'export RGPD téléchargé sur [gdpr.tvtime.com](https://gdpr.tvtime.com/gdpr/self-service) (compte TV Time requis, tel quel sans décompresser). Les séries sont recroisées via leur identifiant TheTVDB (`/lookup/shows?thetvdb=` sur TVmaze), les films par titre + année sur Wikipédia — sans clé d'API, comme le reste du catalogue. L'import peut prendre plusieurs minutes (des centaines d'appels externes) ; un résumé indique ce qui a été importé et ce qui n'a pas pu être retrouvé (une nouvelle tentative plus tard résout souvent ces cas, généralement dus à des limites de débit passagères plutôt qu'à une absence réelle).
 
 ## 🚀 Démarrage rapide
 

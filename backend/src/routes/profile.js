@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import { db, DATA_DIR } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { importTvTimeArchive } from '../services/tvtimeImport.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -20,6 +21,17 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) {
       return cb(new Error('Format d\'image non supporté.'));
+    }
+    cb(null, true);
+  },
+});
+
+const uploadArchive = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.originalname.toLowerCase().endsWith('.zip') && file.mimetype !== 'application/zip') {
+      return cb(new Error('Un fichier .zip est attendu (export RGPD TV Time).'));
     }
     cb(null, true);
   },
@@ -131,6 +143,14 @@ router.get('/stats', (req, res) => {
       movies: watchedMovies,
     },
   });
+});
+
+router.post('/import/tvtime', uploadArchive.single('archive'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Fichier requis.' });
+    const summary = await importTvTimeArchive(req.file.buffer, req.user.id);
+    res.json(summary);
+  } catch (e) { next(e); }
 });
 
 export default router;
