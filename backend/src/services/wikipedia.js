@@ -102,20 +102,40 @@ async function getSynopsisSection(base, key) {
   }
 }
 
+// The search endpoint's own thumbnail is frequently empty for very recent films — the French
+// article often has no lead image yet even though Wikidata or the English article does (that's
+// exactly what the movie's own detail page already falls back to via enrichMovieWithWikidata).
+// Without this, the search grid shows a blank tile for a title that turns out to have a poster
+// the moment you open it.
+async function resolveMissingPoster(key) {
+  const summary = await getSummary('https://fr.wikipedia.org', key).catch(() => null);
+  const wikibaseItem = summary?.wikibase_item;
+  if (!wikibaseItem) return null;
+  const wikidataPoster = await wikidata.getPoster(wikibaseItem).catch(() => null);
+  if (wikidataPoster) return wikidataPoster;
+  const enTitle = await wikidata.getEnglishSitelink(wikibaseItem).catch(() => null);
+  if (!enTitle) return null;
+  const en = await getEnglishSummaryByTitle(enTitle).catch(() => null);
+  return en?.poster || null;
+}
+
 export async function searchMovies(query) {
   const pages = await searchPages('https://fr.wikipedia.org', query);
-  return pages
-    .filter(looksLikeFilm)
-    .map((p) => ({
+  const films = pages.filter(looksLikeFilm);
+  return Promise.all(films.map(async (p) => {
+    let poster = upscaleThumbnail(p.thumbnail?.url);
+    if (!poster) poster = await resolveMissingPoster(p.key).catch(() => null);
+    return {
       source: 'wikipedia',
       source_id: p.key,
       media_type: 'movie',
       type: 'movie',
       title: p.title,
-      poster: upscaleThumbnail(p.thumbnail?.url),
+      poster,
       year: extractYear(p.description, p.title),
       note: null,
-    }));
+    };
+  }));
 }
 
 export async function getMovieSummary(sourceId) {
