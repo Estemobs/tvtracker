@@ -52,12 +52,14 @@ export async function getMovieDetails(sourceId) {
     err.status = 404;
     throw err;
   }
+  const poster = upscaleArtwork(movie.artworkUrl100);
   return {
     source: 'itunes',
     source_id: String(movie.trackId),
     title: movie.trackName,
-    poster: upscaleArtwork(movie.artworkUrl100),
-    backdrop: null,
+    poster,
+    // iTunes has no distinct wide banner image — reuse the poster as the hero backdrop.
+    backdrop: poster,
     synopsis: movie.longDescription || movie.shortDescription || '',
     note: null,
     genres: movie.primaryGenreName ? [movie.primaryGenreName] : [],

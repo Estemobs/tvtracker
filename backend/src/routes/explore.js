@@ -10,6 +10,19 @@ import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 router.use(requireAuth);
 
+// Shows and movies come from independent sources/queries that can each legitimately return the
+// same source+source_id more than once (e.g. a French-search hit and its English-fallback
+// resolution landing on the same Wikipedia article) — collapse those before they reach the UI.
+function dedupe(results) {
+  const seen = new Set();
+  return results.filter((r) => {
+    const key = `${r.source}:${r.source_id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function annotateAdded(req, results) {
   const showKeys = new Set(
     db.prepare(`SELECT source, source_id FROM shows s JOIN user_shows us ON us.show_id = s.id WHERE us.user_id = ?`)
@@ -34,7 +47,7 @@ router.get('/search', async (req, res, next) => {
       wikipedia.searchMoviesAnyLanguage(q).catch(() => []),
     ]);
 
-    res.json({ results: annotateAdded(req, [...shows, ...movies]) });
+    res.json({ results: annotateAdded(req, dedupe([...shows, ...movies])) });
   } catch (e) { next(e); }
 });
 
@@ -45,7 +58,7 @@ router.get('/trending', async (req, res, next) => {
       media_type === 'movie' ? [] : tvmaze.scheduleHighlights().catch(() => []),
       media_type === 'tv' || media_type === 'anime' ? [] : itunes.topMovies().catch(() => []),
     ]);
-    res.json(annotateAdded(req, [...shows, ...movies]));
+    res.json(annotateAdded(req, dedupe([...shows, ...movies])));
   } catch (e) { next(e); }
 });
 

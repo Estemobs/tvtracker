@@ -8,7 +8,11 @@ const STALE_MS = 24 * 60 * 60 * 1000; // refresh cached metadata after 1 day
 
 export async function cacheShow(sourceId) {
   let show = db.prepare(`SELECT * FROM shows WHERE source = 'tvmaze' AND source_id = ?`).get(String(sourceId));
-  const isStale = !show || Date.now() - new Date(show.updated_at + 'Z').getTime() > STALE_MS;
+  // Same self-healing logic as movies (see cacheMovie below): treat a show missing its poster or
+  // backdrop as stale regardless of age, so shows cached before those fields existed pick them up
+  // the next time this runs, instead of staying incomplete for up to a day.
+  const isIncomplete = show && (!show.poster || !show.backdrop);
+  const isStale = !show || isIncomplete || Date.now() - new Date(show.updated_at + 'Z').getTime() > STALE_MS;
 
   if (isStale) {
     const details = await tvmaze.getShowDetails(sourceId);
@@ -73,8 +77,12 @@ export async function enrichMovieWithWikidata(details, { posterOnly = false } = 
     }
   }
 
+  // Wikidata/English-wiki fallback only ever resolves a poster, never a distinct backdrop —
+  // if the base source had neither (poster was empty until just now), reuse it as the backdrop too.
+  const backdrop = details.backdrop || poster;
+
   if (posterOnly) {
-    return { ...details, poster, platform, cast: [] };
+    return { ...details, poster, backdrop, platform, cast: [] };
   }
 
   const [{ cast, rating }, nextInstallment] = await Promise.all([
@@ -85,6 +93,7 @@ export async function enrichMovieWithWikidata(details, { posterOnly = false } = 
   return {
     ...details,
     poster,
+    backdrop,
     platform,
     note: details.note ?? rating?.value ?? null,
     cast,
@@ -97,7 +106,7 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
   // Treat a movie missing its poster or cast as stale regardless of age: an empty result more
   // often means a past fetch failed (rate limit, momentary network issue) than that the source
   // genuinely has nothing — worth retrying on the next view rather than sitting incomplete for a day.
-  const isIncomplete = movie && (!movie.poster || movie.cast_json === '[]' || !movie.cast_json);
+  const isIncomplete = movie && (!movie.poster || !movie.backdrop || movie.cast_json === '[]' || !movie.cast_json);
   const isStale = !movie || isIncomplete || Date.now() - new Date(movie.updated_at + 'Z').getTime() > STALE_MS;
 
   if (isStale) {

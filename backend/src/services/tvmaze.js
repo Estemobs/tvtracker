@@ -93,10 +93,25 @@ export async function discoverByGenre(genre, page = 0) {
     .map(mapShow);
 }
 
+// TVmaze's main show payload only carries the poster; a wide banner-style image (if the show
+// has one at all) lives under a separate "background"/"banner" image type on this endpoint.
+async function getBackdrop(sourceId, posterFallback) {
+  try {
+    const images = await tvmazeFetch(`/shows/${sourceId}/images`);
+    const byType = (type) => images.find((i) => i.type === type && i.main) || images.find((i) => i.type === type);
+    const pick = byType('background') || byType('banner');
+    return pick?.resolutions?.original?.url || posterFallback;
+  } catch {
+    return posterFallback;
+  }
+}
+
 export async function getShowDetails(sourceId) {
   const show = await tvmazeFetch(`/shows/${sourceId}`);
   const episodes = await tvmazeFetch(`/shows/${sourceId}/episodes`);
   const seasons = [...new Set(episodes.map((e) => e.season))].sort((a, b) => a - b);
+  const poster = show.image?.original || show.image?.medium || null;
+  const backdrop = await getBackdrop(sourceId, poster);
 
   let nextEpisode = null;
   const nextHref = show._links?.nextepisode?.href;
@@ -111,8 +126,8 @@ export async function getShowDetails(sourceId) {
     source_id: String(show.id),
     type: isAnime(show) ? 'anime' : 'serie',
     title: show.name,
-    poster: show.image?.original || show.image?.medium || null,
-    backdrop: null,
+    poster,
+    backdrop,
     synopsis: stripHtml(show.summary),
     note: show.rating?.average ?? null,
     genres: show.genres || [],

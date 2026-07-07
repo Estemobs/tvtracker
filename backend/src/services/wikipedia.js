@@ -126,13 +126,16 @@ export async function getMovieSummary(sourceId) {
     throw err;
   }
   const plot = await getSynopsisSection('https://fr.wikipedia.org', sourceId);
+  // Wikipedia doesn't expose a distinct wide banner image — reuse the poster as the detail
+  // page's hero backdrop rather than leaving it permanently blank.
+  const poster = upscaleThumbnail(data.thumbnail?.source || data.originalimage?.source);
   return {
     source: 'wikipedia',
     source_id: sourceId,
     wikibase_item: data.wikibase_item || null,
     title: data.title,
-    poster: upscaleThumbnail(data.thumbnail?.source || data.originalimage?.source),
-    backdrop: null,
+    poster,
+    backdrop: poster,
     synopsis: plot || data.extract || '',
     platform: extractPlatform(data.extract),
     note: null,
@@ -211,7 +214,14 @@ export async function searchMoviesEnglishFallback(query) {
     }
   }));
 
-  return resolved.filter(Boolean);
+  // Different English pages (a redirect and its target, a disambiguated title, etc.) can resolve
+  // to the very same French article via Wikidata — dedupe by source_id before returning.
+  const seen = new Set();
+  return resolved.filter((m) => {
+    if (!m || seen.has(m.source_id)) return false;
+    seen.add(m.source_id);
+    return true;
+  });
 }
 
 export async function getPersonBio(name) {

@@ -85,9 +85,15 @@ router.post('/', async (req, res, next) => {
 router.get('/:showId', async (req, res, next) => {
   try {
     const { showId } = req.params;
-    const userShow = db.prepare(`SELECT us.*, s.* FROM user_shows us JOIN shows s ON s.id = us.show_id
+    let userShow = db.prepare(`SELECT us.*, s.* FROM user_shows us JOIN shows s ON s.id = us.show_id
       WHERE us.user_id = ? AND us.show_id = ?`).get(req.user.id, showId);
     if (!userShow) return res.status(404).json({ error: 'Série introuvable dans votre liste.' });
+
+    if (!userShow.poster || !userShow.backdrop) {
+      await cacheShow(userShow.source_id).catch(() => {});
+      userShow = db.prepare(`SELECT us.*, s.* FROM user_shows us JOIN shows s ON s.id = us.show_id
+        WHERE us.user_id = ? AND us.show_id = ?`).get(req.user.id, showId);
+    }
 
     const episodes = db.prepare(`SELECT e.*, COALESCE(ue.watched, 0) as watched, ue.watched_at
       FROM episodes e LEFT JOIN user_episodes ue ON ue.episode_id = e.id AND ue.user_id = ?
