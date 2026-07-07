@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import ActorModal from '../../components/ActorModal.jsx';
+import ExpandableText from '../../components/ExpandableText.jsx';
 
 const DAYS_FR = {
   Monday: 'Lun.', Tuesday: 'Mar.', Wednesday: 'Mer.', Thursday: 'Jeu.',
@@ -82,7 +83,7 @@ export default function ExploreDetail() {
         </div>
       </div>
 
-      {details.synopsis && <p className="text-sm text-gray-300 leading-relaxed">{details.synopsis}</p>}
+      <ExpandableText text={details.synopsis} className="text-sm text-gray-300 leading-relaxed" />
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
         {details.platform && <span>📺 Disponible sur {details.platform}</span>}

@@ -76,6 +76,8 @@ export async function importTvTimeArchive(buffer, userId) {
     movies_imported: 0,
     movies_to_watch_imported: 0,
     movies_not_found: [],
+    shows_preview: [],
+    movies_preview: [],
   };
 
   await mapWithConcurrency(
@@ -117,6 +119,7 @@ export async function importTvTimeArchive(buffer, userId) {
         .run(total > 0 && watched === total ? 'completed' : 'in_progress', userId, show.id);
 
       summary.shows_imported++;
+      summary.shows_preview.push({ title: show.title, poster: show.poster });
     },
     (group) => summary.shows_not_found.push(group[1].name)
   );
@@ -133,12 +136,13 @@ export async function importTvTimeArchive(buffer, userId) {
         summary.movies_not_found.push(row.movie_name);
         return;
       }
-      const movie = await cacheMovie('wikipedia', match.source_id, { skipEnrichment: true });
+      const movie = await cacheMovie('wikipedia', match.source_id, { posterOnly: true });
       db.prepare(`
         INSERT INTO user_movies (user_id, movie_id, status, watched_at) VALUES (?, ?, 'watched', ?)
         ON CONFLICT(user_id, movie_id) DO UPDATE SET status = 'watched', watched_at = excluded.watched_at
       `).run(userId, movie.id, toSqliteDatetime(row.created_at));
       summary.movies_imported++;
+      summary.movies_preview.push({ title: movie.title, poster: movie.poster });
     },
     (row) => summary.movies_not_found.push(row.movie_name)
   );
@@ -152,10 +156,11 @@ export async function importTvTimeArchive(buffer, userId) {
         summary.movies_not_found.push(row.movie_name);
         return;
       }
-      const movie = await cacheMovie('wikipedia', match.source_id, { skipEnrichment: true });
+      const movie = await cacheMovie('wikipedia', match.source_id, { posterOnly: true });
       db.prepare(`INSERT INTO user_movies (user_id, movie_id) VALUES (?, ?) ON CONFLICT(user_id, movie_id) DO NOTHING`)
         .run(userId, movie.id);
       summary.movies_to_watch_imported++;
+      summary.movies_preview.push({ title: movie.title, poster: movie.poster });
     },
     (row) => summary.movies_not_found.push(row.movie_name)
   );

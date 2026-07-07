@@ -243,6 +243,18 @@ export default function Profile() {
               <li>🎬 {importResult.movies_imported} film{importResult.movies_imported > 1 ? 's' : ''} vu{importResult.movies_imported > 1 ? 's' : ''} importé{importResult.movies_imported > 1 ? 's' : ''}</li>
               <li>📋 {importResult.movies_to_watch_imported} film{importResult.movies_to_watch_imported > 1 ? 's' : ''} à voir importé{importResult.movies_to_watch_imported > 1 ? 's' : ''}</li>
             </ul>
+
+            {(importResult.shows_preview?.length > 0 || importResult.movies_preview?.length > 0) && (
+              <div className="pt-2 border-t border-base-800 space-y-4">
+                {importResult.shows_preview?.length > 0 && (
+                  <CompletedGrid title="Séries importées" items={importResult.shows_preview.map((s, i) => ({ ...s, source: 'tvtime-show', source_id: i }))} />
+                )}
+                {importResult.movies_preview?.length > 0 && (
+                  <CompletedGrid title="Films importés" items={importResult.movies_preview.map((m, i) => ({ ...m, source: 'tvtime-movie', source_id: i }))} />
+                )}
+              </div>
+            )}
+
             {(importResult.shows_not_found.length > 0 || importResult.movies_not_found.length > 0) && (
               <div className="pt-2 border-t border-base-800">
                 <button onClick={() => setShowNotFound((v) => !v)} className="text-xs text-accent-500 hover:underline">

@@ -44,7 +44,13 @@ export async function cacheShow(sourceId) {
 // cast list (with actor photos), a normalized rating, a platform mention, an upcoming sequel,
 // and a poster (Wikidata's own image claim, then the English Wikipedia article via its exact
 // Wikidata sitelink — never a fuzzy title search, to avoid attaching an unrelated film's poster).
-export async function enrichMovieWithWikidata(details) {
+//
+// `posterOnly` is used by the bulk TV Time import: cross-referencing cast/rating/next-installment
+// for hundreds of movies in one go made the import far slower for the least visible payoff — but
+// skipping the poster fallback chain too meant imported movies kept showing no image at all
+// forever (nothing else ever re-visits an already-cached movie to retry it). So the import still
+// resolves the poster properly; only cast/rating/sequel are deferred to the first real page view.
+export async function enrichMovieWithWikidata(details, { posterOnly = false } = {}) {
   let wikibaseItem = details.wikibase_item;
   let platform = details.platform;
 
@@ -55,10 +61,6 @@ export async function enrichMovieWithWikidata(details) {
   }
   if (!wikibaseItem) return { ...details, platform, cast: [] };
 
-  const [{ cast, rating }, nextInstallment] = await Promise.all([
-    wikidata.getCastAndRating(wikibaseItem).catch(() => ({ cast: [], rating: null })),
-    wikidata.getNextInstallment(wikibaseItem).catch(() => null),
-  ]);
   let poster = details.poster;
   if (!poster) {
     poster = await wikidata.getPoster(wikibaseItem).catch(() => null);
@@ -71,6 +73,15 @@ export async function enrichMovieWithWikidata(details) {
     }
   }
 
+  if (posterOnly) {
+    return { ...details, poster, platform, cast: [] };
+  }
+
+  const [{ cast, rating }, nextInstallment] = await Promise.all([
+    wikidata.getCastAndRating(wikibaseItem).catch(() => ({ cast: [], rating: null })),
+    wikidata.getNextInstallment(wikibaseItem).catch(() => null),
+  ]);
+
   return {
     ...details,
     poster,
@@ -81,11 +92,7 @@ export async function enrichMovieWithWikidata(details) {
   };
 }
 
-// `skipEnrichment` is used by the bulk TV Time import: cross-referencing Wikidata for cast/
-// rating/poster-fallback on hundreds of movies in one go would make the import take much
-// longer for no immediate benefit — the "incomplete" staleness check below already re-triggers
-// full enrichment the first time the user actually opens that movie's page.
-export async function cacheMovie(source, sourceId, { skipEnrichment = false } = {}) {
+export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) {
   let movie = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, String(sourceId));
   // Treat a movie missing its poster or cast as stale regardless of age: an empty result more
   // often means a past fetch failed (rate limit, momentary network issue) than that the source
@@ -97,7 +104,7 @@ export async function cacheMovie(source, sourceId, { skipEnrichment = false } = 
     const baseDetails = source === 'itunes'
       ? await itunes.getMovieDetails(sourceId)
       : await wikipedia.getMovieSummary(sourceId);
-    const details = skipEnrichment ? { ...baseDetails, cast: [] } : await enrichMovieWithWikidata(baseDetails);
+    const details = await enrichMovieWithWikidata(baseDetails, { posterOnly });
 
     const upsert = db.prepare(`
       INSERT INTO movies (source, source_id, title, poster, backdrop, synopsis, duration, note, genres, release_date, platform, cast_json, next_installment_json, updated_at)

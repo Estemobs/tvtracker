@@ -131,7 +131,7 @@ export async function getMovieSummary(sourceId) {
     source_id: sourceId,
     wikibase_item: data.wikibase_item || null,
     title: data.title,
-    poster: upscaleThumbnail(data.originalimage?.source || data.thumbnail?.source),
+    poster: upscaleThumbnail(data.thumbnail?.source || data.originalimage?.source),
     backdrop: null,
     synopsis: plot || data.extract || '',
     platform: extractPlatform(data.extract),
@@ -157,7 +157,7 @@ export async function getEnglishSummaryByTitle(title) {
   const data = await getSummary('https://en.wikipedia.org', title);
   if (!data) return null;
   return {
-    poster: upscaleThumbnail(data.originalimage?.source || data.thumbnail?.source),
+    poster: upscaleThumbnail(data.thumbnail?.source || data.originalimage?.source),
   };
 }
 
@@ -202,7 +202,7 @@ export async function searchMoviesEnglishFallback(query) {
         media_type: 'movie',
         type: 'movie',
         title: frData.title,
-        poster: upscaleThumbnail(frData.originalimage?.source || frData.thumbnail?.source),
+        poster: upscaleThumbnail(frData.thumbnail?.source || frData.originalimage?.source),
         year: extractYear(frData.description, frData.title),
         note: null,
       };

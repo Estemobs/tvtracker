@@ -4,9 +4,19 @@ const HEADERS = { 'User-Agent': 'TVTracker/1.0 (self-hosted watch tracker; no co
 const SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
 const API_ENDPOINT = 'https://www.wikidata.org/w/api.php';
 
-function commonsFileUrl(filename) {
+// Special:FilePath with no size hint serves the raw original upload — often several MB for a
+// modern camera photo — which is why movie posters and cast photos were crawling to load in a
+// poster grid. Always request a thumbnail width; Commons resizes server-side and redirects.
+function commonsFileUrl(filename, width = 500) {
   if (!filename) return null;
-  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename.replace(/ /g, '_'))}`;
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename.replace(/ /g, '_'))}?width=${width}`;
+}
+
+function withThumbnailWidth(commonsUrl, width) {
+  if (!commonsUrl) return null;
+  const url = new URL(commonsUrl);
+  url.searchParams.set('width', String(width));
+  return url.toString();
 }
 
 function normalizeScore(rawValue, sourceLabel) {
@@ -60,13 +70,14 @@ export async function getCastAndRating(wikibaseItem) {
     if (row.actorLabel && !/^Q\d+$/.test(row.actorLabel.value) && !seenActors.has(row.actorLabel.value)) {
       seenActors.add(row.actorLabel.value);
       // wdt:P18 inside SPARQL already resolves to a full, ready-to-use Commons file URL
-      // (unlike the wbgetclaims REST calls elsewhere, which return a bare filename) — use it
-      // as-is; re-running it through commonsFileUrl would double percent-encode it.
+      // (unlike the wbgetclaims REST calls elsewhere, which return a bare filename) — re-encoding
+      // it through commonsFileUrl would double percent-encode it, so just add the width param.
+      const rawPhoto = row.actorImage?.value?.replace(/^http:/, 'https:') || null;
       cast.push({
         person_id: row.actor?.value?.split('/').pop() || null,
         actor: row.actorLabel.value,
         character: row.characterLabel?.value || null,
-        photo: row.actorImage?.value?.replace(/^http:/, 'https:') || null,
+        photo: rawPhoto ? withThumbnailWidth(rawPhoto, 150) : null,
       });
     }
     if (row.score) {
@@ -161,7 +172,7 @@ export async function getPerson(personId) {
   return {
     person_id: personId,
     name: entity.labels?.fr?.value || entity.labels?.en?.value || personId,
-    photo: commonsFileUrl(filename),
+    photo: commonsFileUrl(filename, 300),
     birthday,
     country: null,
   };

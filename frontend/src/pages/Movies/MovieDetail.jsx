@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import ActorModal from '../../components/ActorModal.jsx';
+import ExpandableText from '../../components/ExpandableText.jsx';
 
 export default function MovieDetail() {
   const { movieId } = useParams();
@@ -51,7 +52,7 @@ export default function MovieDetail() {
         </div>
       </div>
 
-      {movie.synopsis && <p className="text-sm text-gray-300 leading-relaxed">{movie.synopsis}</p>}
+      <ExpandableText text={movie.synopsis} className="text-sm text-gray-300 leading-relaxed" />
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
         {movie.platform && <span>📺 Disponible sur {movie.platform}</span>}

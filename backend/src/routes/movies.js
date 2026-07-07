@@ -46,30 +46,42 @@ router.post('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get('/:movieId', (req, res) => {
-  const row = db.prepare(`SELECT um.*, m.* FROM user_movies um JOIN movies m ON m.id = um.movie_id
-    WHERE um.user_id = ? AND um.movie_id = ?`).get(req.user.id, req.params.movieId);
-  if (!row) return res.status(404).json({ error: 'Film introuvable dans votre liste.' });
-  const addedByCount = db.prepare('SELECT COUNT(*) c FROM user_movies WHERE movie_id = ?').get(row.movie_id).c;
-  res.json({
-    movie_id: row.movie_id,
-    source: row.source,
-    source_id: row.source_id,
-    title: row.title,
-    poster: row.poster,
-    backdrop: row.backdrop,
-    synopsis: row.synopsis,
-    duration: row.duration,
-    note: row.note,
-    genres: JSON.parse(row.genres || '[]'),
-    release_date: row.release_date,
-    platform: row.platform,
-    cast: JSON.parse(row.cast_json || '[]'),
-    next_installment: JSON.parse(row.next_installment_json || 'null'),
-    added_by_count: addedByCount,
-    status: row.status,
-    personal_rating: row.personal_rating,
-  });
+router.get('/:movieId', async (req, res, next) => {
+  try {
+    let row = db.prepare(`SELECT um.*, m.* FROM user_movies um JOIN movies m ON m.id = um.movie_id
+      WHERE um.user_id = ? AND um.movie_id = ?`).get(req.user.id, req.params.movieId);
+    if (!row) return res.status(404).json({ error: 'Film introuvable dans votre liste.' });
+
+    // The list view and this detail route only ever SELECT the cached row — nothing else
+    // re-triggers cacheMovie once a movie has been added, so a poster/cast left incomplete
+    // (bulk import skips full enrichment for speed, or a past fetch failed) would otherwise
+    // stay incomplete forever. Re-run cacheMovie here; it only actually re-fetches when stale
+    // or incomplete, so this is a no-op for the common case of an already-complete movie.
+    await cacheMovie(row.source, row.source_id).catch(() => {});
+    row = db.prepare(`SELECT um.*, m.* FROM user_movies um JOIN movies m ON m.id = um.movie_id
+      WHERE um.user_id = ? AND um.movie_id = ?`).get(req.user.id, req.params.movieId);
+
+    const addedByCount = db.prepare('SELECT COUNT(*) c FROM user_movies WHERE movie_id = ?').get(row.movie_id).c;
+    res.json({
+      movie_id: row.movie_id,
+      source: row.source,
+      source_id: row.source_id,
+      title: row.title,
+      poster: row.poster,
+      backdrop: row.backdrop,
+      synopsis: row.synopsis,
+      duration: row.duration,
+      note: row.note,
+      genres: JSON.parse(row.genres || '[]'),
+      release_date: row.release_date,
+      platform: row.platform,
+      cast: JSON.parse(row.cast_json || '[]'),
+      next_installment: JSON.parse(row.next_installment_json || 'null'),
+      added_by_count: addedByCount,
+      status: row.status,
+      personal_rating: row.personal_rating,
+    });
+  } catch (e) { next(e); }
 });
 
 router.patch('/:movieId/status', (req, res) => {
