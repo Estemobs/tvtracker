@@ -190,22 +190,29 @@ export default function SeriesDetail() {
         <div className="space-y-2">
           {show.seasons.map((season) => {
             const seasonWatched = season.episodes.every((e) => e.watched);
+            const hasAired = (ep) => ep.air_date && new Date(ep.air_date) <= new Date();
+            const seasonNotAiredYet = season.episodes.length > 0 && season.episodes.every((e) => !hasAired(e));
             return (
               <div key={season.season} className="border border-base-700 rounded-lg overflow-hidden">
                 <div className="flex items-center bg-base-900">
                   <button
                     onClick={() => setOpenSeason(openSeason === season.season ? null : season.season)}
-                    className="flex-1 flex items-center justify-between px-4 py-3 text-sm font-medium min-w-0"
+                    className="flex-1 flex items-center gap-2 px-4 py-3 text-sm font-medium min-w-0"
                   >
                     <span>Saison {season.season}</span>
-                    <span className="text-xs text-gray-400">
+                    {seasonNotAiredYet && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-full px-2 py-0.5">
+                        À venir
+                      </span>
+                    )}
+                    <span className="ml-auto text-xs text-gray-400">
                       {season.episodes.filter((e) => e.watched).length}/{season.episodes.length}
                     </span>
                   </button>
                   <button
                     onClick={() => toggleSeason(season.season, !seasonWatched)}
-                    disabled={busy}
-                    title={seasonWatched ? 'Décocher toute la saison' : 'Marquer toute la saison comme vue'}
+                    disabled={busy || seasonNotAiredYet}
+                    title={seasonNotAiredYet ? 'Saison pas encore diffusée' : seasonWatched ? 'Décocher toute la saison' : 'Marquer toute la saison comme vue'}
                     className={`shrink-0 mx-3 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 ${
                       seasonWatched
                         ? 'bg-accent-600 border-accent-600 text-white'
@@ -217,19 +224,31 @@ export default function SeriesDetail() {
                 </div>
                 {openSeason === season.season && (
                   <div className="divide-y divide-base-800">
-                    {season.episodes.map((ep) => (
-                      <label key={ep.id} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-base-800/40 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!ep.watched}
-                          onChange={(e) => toggleEpisode(ep.id, e.target.checked)}
-                          className="accent-accent-500 w-4 h-4"
-                        />
-                        <span className="text-gray-500 w-8 shrink-0">E{ep.episode_number}</span>
-                        <span className="flex-1 truncate">{ep.title}</span>
-                        {ep.duration && <span className="text-xs text-gray-500 shrink-0">{ep.duration} min</span>}
-                      </label>
-                    ))}
+                    {season.episodes.map((ep) => {
+                      const notAired = !hasAired(ep);
+                      return (
+                        <label
+                          key={ep.id}
+                          className={`flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-base-800/40 ${notAired ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!ep.watched}
+                            disabled={notAired}
+                            onChange={(e) => toggleEpisode(ep.id, e.target.checked)}
+                            className="accent-accent-500 w-4 h-4 disabled:opacity-40"
+                          />
+                          <span className="text-gray-500 w-8 shrink-0">E{ep.episode_number}</span>
+                          <span className={`flex-1 truncate ${notAired ? 'text-gray-500' : ''}`}>{ep.title}</span>
+                          {notAired && (
+                            <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-full px-2 py-0.5 shrink-0">
+                              {ep.air_date ? new Date(ep.air_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : 'À venir'}
+                            </span>
+                          )}
+                          {!notAired && ep.duration && <span className="text-xs text-gray-500 shrink-0">{ep.duration} min</span>}
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
               </div>
