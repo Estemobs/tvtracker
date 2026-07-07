@@ -15,6 +15,14 @@ function looksLikeFilm(page) {
   return FILM_DESCRIPTION.test(page.description || '') || FILM_TITLE_HINT.test(page.title || '');
 }
 
+// Wikipedia disambiguates article titles that clash with something else — "Matrix (film)"
+// rather than just "Matrix" — but that suffix is an internal Wikipedia convention, not part of
+// the movie's actual name, and looks like a bug once it reaches the UI.
+function cleanTitle(title) {
+  if (!title) return title;
+  return title.replace(/\s*\(film(?:,\s*\d{4})?\)\s*$/i, '').trim();
+}
+
 function upscaleThumbnail(url, width = 500) {
   if (!url) return null;
   const full = url.startsWith('//') ? `https:${url}` : url;
@@ -130,7 +138,7 @@ export async function searchMovies(query) {
       source_id: p.key,
       media_type: 'movie',
       type: 'movie',
-      title: p.title,
+      title: cleanTitle(p.title),
       poster,
       year: extractYear(p.description, p.title),
       note: null,
@@ -153,7 +161,7 @@ export async function getMovieSummary(sourceId) {
     source: 'wikipedia',
     source_id: sourceId,
     wikibase_item: data.wikibase_item || null,
-    title: data.title,
+    title: cleanTitle(data.title),
     poster,
     backdrop: poster,
     synopsis: plot || data.extract || '',
@@ -224,7 +232,7 @@ export async function searchMoviesEnglishFallback(query) {
         source_id: frKey,
         media_type: 'movie',
         type: 'movie',
-        title: frData.title,
+        title: cleanTitle(frData.title),
         poster: upscaleThumbnail(frData.thumbnail?.source || frData.originalimage?.source),
         year: extractYear(frData.description, frData.title),
         note: null,
