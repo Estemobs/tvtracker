@@ -39,7 +39,7 @@ async function matchMovie(title, releaseDate) {
   return results.find((r) => r.year === year) || results[0];
 }
 
-export async function importTvTimeArchive(buffer, userId) {
+export async function importTvTimeArchive(buffer, userId, onProgress = () => {}) {
   let zip;
   try {
     zip = new AdmZip(buffer);
@@ -80,6 +80,12 @@ export async function importTvTimeArchive(buffer, userId) {
     movies_preview: [],
   };
 
+  const watchedMovies = movieRows.filter((r) => r.type === 'watch' && r.entity_type === 'movie' && r.movie_name);
+  const toWatchMovies = movieRows.filter((r) => r.type === 'towatch' && r.entity_type === 'movie' && r.movie_name);
+  const total = showGroups.size + watchedMovies.length + toWatchMovies.length;
+  let done = 0;
+  const tick = (phase) => onProgress({ done: ++done, total, phase });
+
   await mapWithConcurrency(
     [...showGroups.entries()],
     3,
@@ -87,6 +93,7 @@ export async function importTvTimeArchive(buffer, userId) {
       const tvmazeId = await tvmaze.findByTvdbId(tvdbId);
       if (!tvmazeId) {
         summary.shows_not_found.push(group.name);
+        tick('shows');
         return;
       }
       const show = await cacheShow(tvmazeId);
@@ -120,12 +127,10 @@ export async function importTvTimeArchive(buffer, userId) {
 
       summary.shows_imported++;
       summary.shows_preview.push({ title: show.title, poster: show.poster });
+      tick('shows');
     },
-    (group) => summary.shows_not_found.push(group[1].name)
+    (group) => { summary.shows_not_found.push(group[1].name); tick('shows'); }
   );
-
-  const watchedMovies = movieRows.filter((r) => r.type === 'watch' && r.entity_type === 'movie' && r.movie_name);
-  const toWatchMovies = movieRows.filter((r) => r.type === 'towatch' && r.entity_type === 'movie' && r.movie_name);
 
   await mapWithConcurrency(
     watchedMovies,
@@ -134,6 +139,7 @@ export async function importTvTimeArchive(buffer, userId) {
       const match = await matchMovie(row.movie_name, row.release_date);
       if (!match) {
         summary.movies_not_found.push(row.movie_name);
+        tick('movies');
         return;
       }
       const movie = await cacheMovie('wikipedia', match.source_id, { posterOnly: true });
@@ -143,8 +149,9 @@ export async function importTvTimeArchive(buffer, userId) {
       `).run(userId, movie.id, toSqliteDatetime(row.created_at));
       summary.movies_imported++;
       summary.movies_preview.push({ title: movie.title, poster: movie.poster });
+      tick('movies');
     },
-    (row) => summary.movies_not_found.push(row.movie_name)
+    (row) => { summary.movies_not_found.push(row.movie_name); tick('movies'); }
   );
 
   await mapWithConcurrency(
@@ -154,6 +161,7 @@ export async function importTvTimeArchive(buffer, userId) {
       const match = await matchMovie(row.movie_name, row.release_date);
       if (!match) {
         summary.movies_not_found.push(row.movie_name);
+        tick('movies');
         return;
       }
       const movie = await cacheMovie('wikipedia', match.source_id, { posterOnly: true });
@@ -161,8 +169,9 @@ export async function importTvTimeArchive(buffer, userId) {
         .run(userId, movie.id);
       summary.movies_to_watch_imported++;
       summary.movies_preview.push({ title: movie.title, poster: movie.poster });
+      tick('movies');
     },
-    (row) => summary.movies_not_found.push(row.movie_name)
+    (row) => { summary.movies_not_found.push(row.movie_name); tick('movies'); }
   );
 
   return summary;

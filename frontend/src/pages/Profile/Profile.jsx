@@ -48,6 +48,7 @@ export default function Profile() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [importError, setImportError] = useState('');
   const [showNotFound, setShowNotFound] = useState(false);
@@ -92,6 +93,29 @@ export default function Profile() {
     await api.patch('/profile', { language });
   };
 
+  const pollImportJob = (jobId) => {
+    const interval = setInterval(async () => {
+      try {
+        const job = await api.get(`/profile/import/tvtime/${jobId}`);
+        setImportProgress(job.progress);
+        if (job.status === 'done') {
+          clearInterval(interval);
+          setImportResult(job.result);
+          setImporting(false);
+          api.get('/profile/stats').then(setStats);
+        } else if (job.status === 'error') {
+          clearInterval(interval);
+          setImportError(job.error);
+          setImporting(false);
+        }
+      } catch (err) {
+        clearInterval(interval);
+        setImportError(err.message);
+        setImporting(false);
+      }
+    }, 1000);
+  };
+
   const importTvTime = async (e) => {
     const file = e.target.files[0];
     e.target.value = '';
@@ -99,16 +123,15 @@ export default function Profile() {
     setImporting(true);
     setImportError('');
     setImportResult(null);
+    setImportProgress(null);
     setShowNotFound(false);
     try {
       const fd = new FormData();
       fd.append('archive', file);
-      const result = await api.postForm('/profile/import/tvtime', fd);
-      setImportResult(result);
-      api.get('/profile/stats').then(setStats);
+      const { job_id } = await api.postForm('/profile/import/tvtime', fd);
+      pollImportJob(job_id);
     } catch (err) {
       setImportError(err.message);
-    } finally {
       setImporting(false);
     }
   };
@@ -232,6 +255,20 @@ export default function Profile() {
           </span>
           <input type="file" accept=".zip,application/zip" className="hidden" onChange={importTvTime} disabled={importing} />
         </label>
+
+        {importing && importProgress && importProgress.total > 0 && (
+          <div className="space-y-1">
+            <div className="h-2 w-full bg-base-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent-500 rounded-full transition-all"
+                style={{ width: `${Math.round((importProgress.done / importProgress.total) * 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400">
+              {importProgress.done}/{importProgress.total} — {importProgress.phase === 'shows' ? 'séries' : 'films'} en cours de traitement
+            </p>
+          </div>
+        )}
 
         {importError && <p className="text-sm text-red-400">{importError}</p>}
 

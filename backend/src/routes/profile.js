@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import { db, DATA_DIR } from '../db/index.js';
@@ -8,6 +9,20 @@ import { importTvTimeArchive } from '../services/tvtimeImport.js';
 
 const router = Router();
 router.use(requireAuth);
+
+// The import runs for minutes (hundreds of external lookups) so the upload request can't just
+// block until it's done — the browser/proxy would time out and the UI couldn't show progress.
+// Kept in-memory only: this is a single-container self-hosted app, a lost job on restart just
+// means re-uploading the same archive, which is idempotent (ON CONFLICT DO NOTHING/UPDATE throughout).
+const importJobs = new Map();
+const JOB_TTL_MS = 60 * 60 * 1000;
+
+function pruneOldJobs() {
+  const cutoff = Date.now() - JOB_TTL_MS;
+  for (const [id, job] of importJobs) {
+    if (job.finishedAt && job.finishedAt < cutoff) importJobs.delete(id);
+  }
+}
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -145,12 +160,33 @@ router.get('/stats', (req, res) => {
   });
 });
 
-router.post('/import/tvtime', uploadArchive.single('archive'), async (req, res, next) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: 'Fichier requis.' });
-    const summary = await importTvTimeArchive(req.file.buffer, req.user.id);
-    res.json(summary);
-  } catch (e) { next(e); }
+router.post('/import/tvtime', uploadArchive.single('archive'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Fichier requis.' });
+  pruneOldJobs();
+
+  const jobId = randomUUID();
+  const job = { status: 'running', progress: { done: 0, total: 0, phase: 'shows' }, result: null, error: null, finishedAt: null };
+  importJobs.set(jobId, job);
+
+  importTvTimeArchive(req.file.buffer, req.user.id, (progress) => { job.progress = progress; })
+    .then((summary) => {
+      job.status = 'done';
+      job.result = summary;
+      job.finishedAt = Date.now();
+    })
+    .catch((e) => {
+      job.status = 'error';
+      job.error = e.status ? e.message : "Une erreur inattendue est survenue pendant l'import.";
+      job.finishedAt = Date.now();
+    });
+
+  res.status(202).json({ job_id: jobId });
+});
+
+router.get('/import/tvtime/:jobId', (req, res) => {
+  const job = importJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Import introuvable ou expiré.' });
+  res.json({ status: job.status, progress: job.progress, result: job.result, error: job.error });
 });
 
 export default router;
