@@ -6,10 +6,28 @@ import { cacheMovie } from '../services/catalog.js';
 const router = Router();
 router.use(requireAuth);
 
+// The list itself must stay instant (a bulk re-enrichment on every load was the exact "list
+// takes forever" problem fixed earlier) — but a movie missing its poster here would otherwise
+// only ever heal once someone happens to open its detail page. Kick off a background re-fetch
+// for any row still missing a poster; it'll show up correctly on the next load instead. The
+// in-flight set just avoids piling up duplicate fetches if the list is reloaded again before
+// the first one finishes.
+const healingMovies = new Set();
+function healPosterInBackground(source, sourceId) {
+  const key = `${source}:${sourceId}`;
+  if (healingMovies.has(key)) return;
+  healingMovies.add(key);
+  cacheMovie(source, sourceId).finally(() => healingMovies.delete(key));
+}
+
 router.get('/', (req, res) => {
   const { filter, sort } = req.query;
   let rows = db.prepare(`SELECT um.*, m.* , um.status as user_status, m.id as movie_id
     FROM user_movies um JOIN movies m ON m.id = um.movie_id WHERE um.user_id = ?`).all(req.user.id);
+
+  for (const r of rows) {
+    if (!r.poster) healPosterInBackground(r.source, r.source_id);
+  }
 
   rows = rows.map((r) => ({
     movie_id: r.movie_id,

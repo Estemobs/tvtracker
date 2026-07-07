@@ -30,6 +30,15 @@ function showProgress(userId, showId) {
   return { watched, total };
 }
 
+// Same reasoning as movies.js's healPosterInBackground: the list must stay instant, but a show
+// missing its poster should still heal on its own rather than waiting for someone to open it.
+const healingShows = new Set();
+function healPosterInBackground(sourceId) {
+  if (healingShows.has(sourceId)) return;
+  healingShows.add(sourceId);
+  cacheShow(sourceId).finally(() => healingShows.delete(sourceId));
+}
+
 router.get('/', (req, res) => {
   const { filter, type, sort } = req.query;
   let rows = db.prepare(`
@@ -37,6 +46,10 @@ router.get('/', (req, res) => {
     FROM user_shows us JOIN shows s ON s.id = us.show_id
     WHERE us.user_id = ?
   `).all(req.user.id);
+
+  for (const r of rows) {
+    if (!r.poster) healPosterInBackground(r.source_id);
+  }
 
   rows = rows.map((r) => {
     const progress = showProgress(req.user.id, r.show_id);

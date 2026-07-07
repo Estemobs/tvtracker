@@ -227,13 +227,18 @@ export async function searchMoviesEnglishFallback(query) {
       const frKey = frTitle.replace(/ /g, '_');
       const frData = await getSummary('https://fr.wikipedia.org', frKey);
       if (!frData) return null;
+      // French article often lacks its own lead image even once resolved this way — the English
+      // article we already fetched, or Wikidata's own P18 claim, frequently has one.
+      let poster = upscaleThumbnail(frData.thumbnail?.source || frData.originalimage?.source);
+      if (!poster) poster = await wikidata.getPoster(wikibaseItem).catch(() => null);
+      if (!poster) poster = upscaleThumbnail(enSummary.thumbnail?.source || enSummary.originalimage?.source);
       return {
         source: 'wikipedia',
         source_id: frKey,
         media_type: 'movie',
         type: 'movie',
         title: cleanTitle(frData.title),
-        poster: upscaleThumbnail(frData.thumbnail?.source || frData.originalimage?.source),
+        poster,
         year: extractYear(frData.description, frData.title),
         note: null,
       };
