@@ -2,6 +2,37 @@ const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 const MAX_RETRY_DELAY_MS = 3000;
 const REQUEST_TIMEOUT_MS = 12000;
 
+// Per-request retries alone weren't enough during a large TV Time import: once Wikipedia starts
+// rate-limiting one request, every *other* in-flight or upcoming request to the same host keeps
+// hammering it too (each with its own retries), which just prolongs the throttling window instead
+// of backing off from it. This is a small shared circuit breaker per hostname — a 429 anywhere
+// pauses *all* subsequent calls to that host for a bit, growing on repeated hits and resetting
+// once things are healthy again, instead of every caller independently retrying into the same wall.
+const BASE_COOLDOWN_MS = 2000;
+const MAX_COOLDOWN_MS = 20000;
+const hostState = new Map(); // hostname -> { until, backoff }
+
+function hostnameOf(url) {
+  try { return new URL(url).hostname; } catch { return 'unknown'; }
+}
+
+async function waitForCooldown(hostname) {
+  const state = hostState.get(hostname);
+  if (!state) return;
+  const wait = state.until - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+}
+
+function registerRateLimit(hostname) {
+  const state = hostState.get(hostname) || { until: 0, backoff: BASE_COOLDOWN_MS };
+  const backoff = Math.min(state.backoff, MAX_COOLDOWN_MS);
+  hostState.set(hostname, { until: Date.now() + backoff, backoff: Math.min(backoff * 2, MAX_COOLDOWN_MS) });
+}
+
+function registerSuccess(hostname) {
+  if (hostState.has(hostname)) hostState.delete(hostname);
+}
+
 // Wikipedia/Wikidata/TVmaze occasionally return a transient 429/5xx under load. Without a
 // retry, that single hiccup gets treated as "this show/movie genuinely has no cast/poster"
 // and cached as such for a full day (see STALE_MS) — a couple of short retries turns a
@@ -12,6 +43,9 @@ const REQUEST_TIMEOUT_MS = 12000;
 // it — forever. A bulk import doing hundreds of these sequentially turned that from a
 // theoretical risk into an observed multi-minute stall, so every attempt gets a hard cap.
 export async function fetchWithRetry(url, options = {}, retries = 4) {
+  const hostname = hostnameOf(url);
+  await waitForCooldown(hostname);
+
   let lastResp;
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -20,8 +54,12 @@ export async function fetchWithRetry(url, options = {}, retries = 4) {
     try {
       const resp = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timer);
-      if (resp.ok || !RETRYABLE_STATUSES.has(resp.status)) return resp;
+      if (resp.ok || !RETRYABLE_STATUSES.has(resp.status)) {
+        registerSuccess(hostname);
+        return resp;
+      }
       lastResp = resp;
+      if (resp.status === 429) registerRateLimit(hostname);
       if (attempt < retries) {
         // Wikimedia sometimes asks for a very long Retry-After (a minute+) after a burst of
         // requests — honoring that literally would make a single item block the whole import
