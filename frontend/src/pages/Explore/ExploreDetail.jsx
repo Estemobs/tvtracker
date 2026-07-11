@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import ActorModal from '../../components/ActorModal.jsx';
 import ExpandableText from '../../components/ExpandableText.jsx';
@@ -106,13 +106,21 @@ export default function ExploreDetail() {
 
       <div className="flex flex-wrap gap-2">
         {details.already_added ? (
-          <button
-            onClick={removeFromList}
-            disabled={removing}
-            className="bg-base-800 hover:bg-red-900/40 text-red-400 disabled:opacity-50 text-sm rounded-lg px-4 py-2.5 font-medium border border-base-700"
-          >
-            {removing ? 'Suppression…' : 'Supprimer de ma liste'}
-          </button>
+          <>
+            <Link
+              to={mediaType === 'movie' ? `/films/${details.movie_id}` : `/series/${details.show_id}`}
+              className="bg-accent-600 hover:bg-accent-500 text-sm rounded-lg px-4 py-2.5 font-medium"
+            >
+              {mediaType === 'movie' ? 'Voir ma fiche' : 'Voir ma fiche (épisodes vus)'}
+            </Link>
+            <button
+              onClick={removeFromList}
+              disabled={removing}
+              className="bg-base-800 hover:bg-red-900/40 text-red-400 disabled:opacity-50 text-sm rounded-lg px-4 py-2.5 font-medium border border-base-700"
+            >
+              {removing ? 'Suppression…' : 'Supprimer de ma liste'}
+            </button>
+          </>
         ) : (
           <button
             onClick={addToList}

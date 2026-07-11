@@ -5,7 +5,7 @@ import { PosterGridSkeleton } from '../../components/Skeleton.jsx';
 
 export default function SeriesList() {
   const [shows, setShows] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('in_progress');
   const [type, setType] = useState('all');
   const [sort, setSort] = useState('recent');
 
@@ -24,7 +24,7 @@ export default function SeriesList() {
 
       <div className="flex flex-wrap gap-2">
         <Tabs value={filter} onChange={setFilter} options={[
-          ['all', 'Toutes'], ['in_progress', 'En cours'], ['completed', 'Terminées'],
+          ['in_progress', 'En cours'], ['completed', 'Terminées'],
         ]} />
         <Tabs value={type} onChange={setType} options={[
           ['all', 'Tout'], ['serie', 'Séries'], ['anime', 'Animes'],

@@ -5,7 +5,7 @@ import { PosterGridSkeleton } from '../../components/Skeleton.jsx';
 
 export default function MoviesList() {
   const [movies, setMovies] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('to_watch');
   const [sort, setSort] = useState('recent');
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export default function MoviesList() {
 
       <div className="flex flex-wrap gap-2">
         <div className="flex bg-base-800 rounded-lg p-0.5 border border-base-700">
-          {[['all', 'Tous'], ['to_watch', 'À voir'], ['watched', 'Vus']].map(([v, label]) => (
+          {[['to_watch', 'À voir'], ['watched', 'Vus']].map(([v, label]) => (
             <button
               key={v}
               onClick={() => setFilter(v)}
