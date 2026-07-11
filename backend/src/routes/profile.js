@@ -160,9 +160,26 @@ router.get('/stats', (req, res) => {
   });
 });
 
-router.post('/import/tvtime', uploadArchive.single('archive'), (req, res) => {
+router.post('/import/tvtime', (req, res, next) => {
+  uploadArchive.single('archive')(req, res, (err) => {
+    // multer errors (file too large, wrong extension) never reach our route handler otherwise —
+    // they'd fall through to the generic error middleware with an unhelpful English message.
+    if (err) {
+      console.error('[import/tvtime] upload rejected:', err);
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? 'Fichier trop volumineux (limite 100 Mo).'
+        : err.message || 'Fichier invalide.';
+      return res.status(status).json({ error: message });
+    }
+    next();
+  });
+}, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Fichier requis.' });
   pruneOldJobs();
+
+  const mem = process.memoryUsage();
+  console.log(`[import/tvtime] starting for user ${req.user.id}, archive ${(req.file.size / 1024).toFixed(0)} Ko, heap ${(mem.heapUsed / 1024 / 1024).toFixed(0)}/${(mem.heapTotal / 1024 / 1024).toFixed(0)} Mo, rss ${(mem.rss / 1024 / 1024).toFixed(0)} Mo`);
 
   const jobId = randomUUID();
   const job = { status: 'running', progress: { done: 0, total: 0, phase: 'shows' }, result: null, error: null, finishedAt: null };
@@ -173,10 +190,14 @@ router.post('/import/tvtime', uploadArchive.single('archive'), (req, res) => {
       job.status = 'done';
       job.result = summary;
       job.finishedAt = Date.now();
+      console.log(`[import/tvtime] job ${jobId} done:`, summary);
     })
     .catch((e) => {
+      // Not scrubbed: this is a single-admin self-hosted instance, and the raw message is far
+      // more useful for diagnosing a failed import than a generic "something went wrong".
+      console.error(`[import/tvtime] job ${jobId} failed:`, e);
       job.status = 'error';
-      job.error = e.status ? e.message : "Une erreur inattendue est survenue pendant l'import.";
+      job.error = e.message || "Une erreur inattendue est survenue pendant l'import.";
       job.finishedAt = Date.now();
     });
 

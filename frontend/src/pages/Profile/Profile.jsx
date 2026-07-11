@@ -94,9 +94,16 @@ export default function Profile() {
   };
 
   const pollImportJob = (jobId) => {
+    // A single failed poll (a proxy hiccup, a brief redeploy) doesn't mean the import itself
+    // failed — the job keeps running server-side regardless. Only give up after several polls
+    // in a row fail, so a momentary network blip during a multi-minute import doesn't wrongly
+    // surface as "the import crashed" while it's actually still working in the background.
+    let consecutiveFailures = 0;
+    const MAX_CONSECUTIVE_FAILURES = 8;
     const interval = setInterval(async () => {
       try {
         const job = await api.get(`/profile/import/tvtime/${jobId}`);
+        consecutiveFailures = 0;
         setImportProgress(job.progress);
         if (job.status === 'done') {
           clearInterval(interval);
@@ -109,9 +116,15 @@ export default function Profile() {
           setImporting(false);
         }
       } catch (err) {
-        clearInterval(interval);
-        setImportError(err.message);
-        setImporting(false);
+        consecutiveFailures++;
+        console.warn(`[import] poll failed (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}):`, err);
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          clearInterval(interval);
+          setImportError(
+            `Impossible de suivre la progression (${err.message}). L'import continue peut-être en arrière-plan côté serveur — vérifie la liste dans quelques minutes avant de réessayer.`
+          );
+          setImporting(false);
+        }
       }
     }, 1000);
   };

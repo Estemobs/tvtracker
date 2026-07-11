@@ -17,6 +17,17 @@ const FRONTEND_DIST = process.env.FRONTEND_DIST || path.join(__dirname, '..', 'p
 
 bootstrapAdmin();
 
+// If something crashes the process outright (e.g. running out of memory while buffering a large
+// TV Time archive), Docker just sees the container die and restart — from the outside that can
+// look identical to a proxy timing out (502), with no clue which one actually happened. Logging
+// here at least leaves a trace in `docker logs` for the moment right before it goes down.
+process.on('uncaughtException', (err) => {
+  console.error('[fatal] uncaughtException:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[fatal] unhandledRejection:', reason);
+});
+
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
