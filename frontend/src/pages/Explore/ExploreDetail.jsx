@@ -18,15 +18,30 @@ export default function ExploreDetail() {
   const { mediaType, source, sourceId } = useParams();
   const navigate = useNavigate();
   const [details, setDetails] = useState(null);
+  const [error, setError] = useState(null);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [selectedActorId, setSelectedActorId] = useState(null);
 
-  useEffect(() => {
+  const load = () => {
+    setDetails(null);
+    setError(null);
     const endpoint = mediaType === 'movie' ? `/explore/movie/${source}/${sourceId}` : `/explore/tv/${sourceId}`;
-    api.get(endpoint).then(setDetails);
-  }, [mediaType, source, sourceId]);
+    api.get(endpoint).then(setDetails).catch((e) => setError(e.message || 'Erreur de chargement.'));
+  };
 
+  useEffect(load, [mediaType, source, sourceId]);
+
+  if (error) {
+    return (
+      <div className="text-sm text-gray-400 space-y-3">
+        <p>{error}</p>
+        <button onClick={load} className="bg-base-800 hover:bg-base-700 rounded-lg px-4 py-2 text-sm font-medium border border-base-700">
+          Réessayer
+        </button>
+      </div>
+    );
+  }
   if (!details) return <p className="text-gray-400 text-sm">Chargement…</p>;
 
   const addToList = async () => {

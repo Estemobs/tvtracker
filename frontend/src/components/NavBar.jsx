@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import logo from '../assets/logo.svg';
 
@@ -57,10 +57,10 @@ export default function NavBar() {
     <>
       {/* Mobile top bar */}
       <header className="sm:hidden fixed top-0 inset-x-0 z-40 bg-base-900/95 backdrop-blur border-b border-base-700 flex items-center justify-between px-4 py-2.5">
-        <div className="flex items-center gap-2">
+        <Link to="/series" className="flex items-center gap-2">
           <img src={logo} alt="TVTracker" className="w-7 h-7" />
           <span className="font-bold text-white">TVTracker</span>
-        </div>
+        </Link>
         <div className="flex items-center gap-2">
           <VersionLink className="text-[10px] text-gray-600" />
           <button
@@ -82,10 +82,10 @@ export default function NavBar() {
 
       {/* Desktop sidebar */}
       <nav className="hidden sm:flex flex-col gap-1 w-56 shrink-0 border-r border-base-700 bg-base-900 p-4 h-screen sticky top-0">
-        <div className="flex items-center gap-2 px-4 mb-6">
+        <Link to="/series" className="flex items-center gap-2 px-4 mb-6">
           <img src={logo} alt="TVTracker" className="w-8 h-8" />
           <span className="text-xl font-bold text-white">TVTracker</span>
-        </div>
+        </Link>
         {allItems.map((it) => (
           <NavItem key={it.to} {...it} />
         ))}
