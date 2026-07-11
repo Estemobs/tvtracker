@@ -32,7 +32,15 @@ function toSqliteDatetime(tvTimeDate) {
   return tvTimeDate.trim();
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function matchMovie(title, releaseDate) {
+  // Movies are already processed one at a time (see mapWithConcurrency limit below), but firing
+  // each lookup the instant the previous one resolves still produces a fairly tight burst against
+  // Wikipedia/Wikidata over a large import — this small pacing gap is cheap insurance against
+  // tripping their rate limiter, on top of the fallback-search fix that removed most of the
+  // unnecessary request volume in the first place.
+  await sleep(250);
   const year = (releaseDate || '').slice(0, 4);
   const results = await wikipedia.searchMoviesAnyLanguage(title).catch(() => []);
   if (!results.length) return null;

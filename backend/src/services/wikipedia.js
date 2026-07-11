@@ -173,12 +173,17 @@ export async function getMovieSummary(sourceId) {
   };
 }
 
-// French Wikipedia search already resolves most English-titled queries via redirects; only
-// when it comes up thin do we also check English Wikipedia (mapped back to French — see
-// searchMoviesEnglishFallback for why never a fuzzy match).
+// French Wikipedia search already resolves most English-titled queries via redirects — a famous
+// title like "Titanic" or "Forrest Gump" typically only ever returns 1-2 results there (the
+// search API is precise, not fuzzy), and that's already the correct film. The English fallback
+// chain is expensive (many extra requests per candidate: an English summary, a Wikidata sitelink
+// lookup, a French summary, ...), so it used to trigger on anything under 3 results — which was
+// nearly always, turning almost every bulk-import title into 15-20 extra external calls and
+// reliably tripping Wikipedia's rate limiter over a large import. Only fall back when French
+// search found nothing at all worth calling a film.
 export async function searchMoviesAnyLanguage(query) {
   const primary = await searchMovies(query);
-  if (primary.length >= 3) return primary;
+  if (primary.length > 0) return primary;
   const englishMatches = await searchMoviesEnglishFallback(query).catch(() => []);
   const seen = new Set(primary.map((m) => m.source_id));
   return [...primary, ...englishMatches.filter((m) => !seen.has(m.source_id))];
