@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import * as tvmaze from './tvmaze.js';
 import * as wikipedia from './wikipedia.js';
 import { cacheShow, cacheMovie } from './catalog.js';
+import { bulkImportContext } from './httpRetry.js';
 
 const EPISODES_FILE = 'tracking-prod-records-v2.csv';
 const MOVIES_FILE = 'tracking-prod-records.csv';
@@ -57,6 +58,13 @@ export async function importTvTimeArchive(buffer, userId, onProgress = () => {})
     throw err;
   }
 
+  // Marks every external request made for the rest of this import as "bulk" — see httpRetry.js:
+  // a rate-limit hit here is fine to wait out patiently, but that same wait must NOT also stall
+  // someone's live Explorer search just because it happens to be running at the same time.
+  return bulkImportContext.run(true, () => runImport(zip, userId, onProgress));
+}
+
+async function runImport(zip, userId, onProgress) {
   const episodesEntry = zip.getEntry(EPISODES_FILE);
   const moviesEntry = zip.getEntry(MOVIES_FILE);
   if (!episodesEntry || !moviesEntry) {

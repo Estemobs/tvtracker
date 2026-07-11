@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 const MAX_RETRY_DELAY_MS = 3000;
 const REQUEST_TIMEOUT_MS = 12000;
@@ -12,6 +14,15 @@ const BASE_COOLDOWN_MS = 2000;
 const MAX_COOLDOWN_MS = 20000;
 const hostState = new Map(); // hostname -> { until, backoff }
 
+// A cooldown that's appropriate for a bulk import (fine to sit and wait up to MAX_COOLDOWN_MS,
+// nobody's watching a spinner) is exactly what makes live, interactive requests — someone typing
+// in the Explorer search box — feel frozen for many seconds if a background import happens to be
+// tripping the same host's circuit breaker at the same time. Bulk jobs opt into the full wait via
+// this context; everything else caps it short and would rather return quickly with a retry or a
+// gap than block the UI.
+export const bulkImportContext = new AsyncLocalStorage();
+const INTERACTIVE_MAX_WAIT_MS = 1200;
+
 function hostnameOf(url) {
   try { return new URL(url).hostname; } catch { return 'unknown'; }
 }
@@ -20,7 +31,9 @@ async function waitForCooldown(hostname) {
   const state = hostState.get(hostname);
   if (!state) return;
   const wait = state.until - Date.now();
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  if (wait <= 0) return;
+  const cap = bulkImportContext.getStore() ? wait : Math.min(wait, INTERACTIVE_MAX_WAIT_MS);
+  await new Promise((r) => setTimeout(r, cap));
 }
 
 function registerRateLimit(hostname) {
