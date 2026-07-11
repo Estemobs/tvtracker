@@ -4,71 +4,59 @@
 
 <h1 align="center">TVTracker</h1>
 
-> Application web auto-hébergée de suivi de séries, animes et films — épisode par épisode, avec statistiques de visionnage. Pensée pour un petit groupe (famille/amis) : les inscriptions sont validées par l'administrateur.
+<p align="center">
+  Le suivi de séries, animes et films — épisode par épisode, entre amis, auto-hébergé.
+</p>
 
-**Zéro clé d'API** · **Un seul conteneur Docker** · **Mise à jour automatique à chaque push**
+<p align="center">
+  <b>Zéro clé d'API</b> · <b>Un seul conteneur Docker</b> · <b>Mise à jour automatique à chaque push</b>
+</p>
 
----
+<p align="center">
+  <img src="docs/screenshots/detail.jpg" width="100%" alt="Fiche détail d'une série, avec distribution et affiche" />
+</p>
 
-## ✨ Fonctionnalités
+## Pourquoi
 
-| Menu | Ce qu'on y fait |
-|---|---|
-| **📺 Séries** | Suivi épisode par épisode ou saison entière en un clic, barre de progression, filtres (en cours / terminées, séries / animes), note personnelle |
-| **🎬 Films** | Liste à voir / vu, bascule en un clic, note personnelle |
-| **🔍 Explorer** | Recherche en temps réel (séries, animes, films), tendances, ajout à sa liste, badge « Déjà ajouté » |
-| **👤 Profil** | Temps de visionnage total et par type, top contenus, grilles des terminés, édition avatar/e-mail/mot de passe, import de l'historique TV Time |
-| **🛠️ Admin** | Validation/refus des inscriptions, désactivation/suppression de comptes |
+Les trackers grand public poussent vers un abonnement et demandent une clé d'API rien que pour afficher une affiche. TVTracker fait l'inverse : un `docker run`, un compte admin, et vos amis s'inscrivent — leurs données restent sur votre serveur, point final.
 
-Interface **mobile-first** (navigation en bas d'écran sur téléphone, sidebar sur desktop), thème sombre, chargement paresseux des affiches.
+## Ce qu'on y fait
 
-## 🏗️ Comment ça marche
+<table>
+<tr>
+<td width="50%">
 
-```
-┌─────────────────────────────────────────────────┐
-│               Conteneur Docker unique           │
-│                                                 │
-│  React (statique) ──► Express (API + fichiers)  │
-│                          │                      │
-│                          ├──► SQLite  ──┐       │
-│                          │              ▼       │
-│                          │        volume /data  │
-│                          │      (BDD + avatars) │
-│                          ▼                      │
-│              TVmaze · iTunes · Wikipédia        │
-│               (catalogue, sans clé d'API)       │
-└─────────────────────────────────────────────────┘
-```
+**📺 Séries & Animes**
+Cochez un épisode ou une saison entière en un clic, suivez votre progression, filtrez en cours / terminées.
 
-- **Frontend** : React + Vite + Tailwind CSS, buildé en fichiers statiques dans l'image.
-- **Backend** : Node.js + Express — sert l'API REST **et** le front sur le même port.
-- **Base de données** : SQLite (`better-sqlite3`), un simple fichier dans le volume `/data`. Migrations automatiques au démarrage.
-- **Auth** : JWT + bcrypt, verrouillage anti brute-force, statuts de compte (en attente / actif / refusé / désactivé).
-- **Catalogue** : métadonnées mises en cache localement — les listes restent consultables même si une source externe tombe.
+**🎬 Films**
+Liste à voir / vu, note personnelle, bascule instantanée.
 
-### Catalogue sans clé d'API
+</td>
+<td width="50%">
 
-| Contenu | Source | Détail |
-|---|---|---|
-| Séries & animes | [TVmaze](https://www.tvmaze.com/api) | Recherche, fiches, saisons/épisodes, notes. Les animes sont détectés via le genre `Anime` |
-| Films — recherche | [Wikipédia FR](https://fr.wikipedia.org) | Pages dont la description commence par « film » |
-| Films — tendances | [iTunes](https://itunes.apple.com) | Classement officiel des films (l'API de *recherche* films d'iTunes a été désactivée par Apple, seuls lookup et charts fonctionnent) |
+**🔍 Explorer**
+Recherche en temps réel, tendances du moment, distribution complète avec photos, badge « Déjà ajouté ».
 
-Compromis assumé : certains films n'ont pas de durée, genre ou note publique selon la source — c'est le prix de l'absence totale de clé d'API.
+**👤 Profil**
+Temps de visionnage total, top contenus, import de tout votre historique TV Time en un fichier.
 
-### Import de l'historique TV Time
+</td>
+</tr>
+</table>
 
-Page **Profil → Importer depuis TV Time** : charge le fichier `.zip` de l'export RGPD téléchargé sur [gdpr.tvtime.com](https://gdpr.tvtime.com/gdpr/self-service) (compte TV Time requis, tel quel sans décompresser). Les séries sont recroisées via leur identifiant TheTVDB (`/lookup/shows?thetvdb=` sur TVmaze), les films par titre + année sur Wikipédia — sans clé d'API, comme le reste du catalogue. L'import tourne en tâche de fond côté serveur (l'upload répond immédiatement avec un identifiant de job) et l'interface affiche une barre de progression en temps réel (élément traité / total) le temps des quelques minutes que prennent les centaines d'appels externes ; il ne résout que l'affiche des films en priorité pour rester rapide (distribution et note se complètent d'eux-mêmes à la première ouverture de la fiche). Un résumé s'affiche une fois l'import terminé, avec une prévisualisation en jaquettes des séries et films récupérés, et un résumé de ce qui n'a pas pu être retrouvé (une nouvelle tentative plus tard résout souvent ces cas, généralement dus à des limites de débit passagères plutôt qu'à une absence réelle).
+<p align="center">
+  <img src="docs/screenshots/series.jpg" width="49%" alt="Liste des séries en cours, avec barres de progression" />
+  <img src="docs/screenshots/explorer.jpg" width="49%" alt="Recherche Explorer avec résultats en temps réel" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/films.jpg" width="49%" alt="Liste des films vus" />
+  <img src="docs/screenshots/profil.jpg" width="49%" alt="Page profil avec statistiques de visionnage" />
+</p>
 
-## 🚀 Démarrage rapide
+Interface mobile-first (navigation en bas d'écran sur téléphone, sidebar sur desktop), thème sombre.
 
-```bash
-git clone https://github.com/Estemobs/tvtracker.git && cd tvtracker
-cp .env.example .env      # puis éditer : JWT_SECRET, ADMIN_*
-docker compose up -d --build
-```
-
-Ou encore plus simple, sans cloner le dépôt — l'image prête à l'emploi est publiée sur GHCR :
+## Démarrage rapide
 
 ```bash
 docker run -d --name tvtracker -p 3000:3000 \
@@ -78,81 +66,62 @@ docker run -d --name tvtracker -p 3000:3000 \
   ghcr.io/estemobs/tvtracker:latest
 ```
 
-L'application est sur **http://localhost:3000**. Le compte admin défini dans `.env` est créé automatiquement au premier démarrage ; les amis s'inscrivent ensuite via la page Register et apparaissent dans l'onglet Admin pour validation.
+L'application est sur **http://localhost:3000**. Le compte admin est créé automatiquement au premier démarrage ; vos amis s'inscrivent ensuite et apparaissent dans l'onglet Admin pour validation.
+
+Ou avec Docker Compose, en clonant le dépôt :
+
+```bash
+git clone https://github.com/Estemobs/tvtracker.git && cd tvtracker
+cp .env.example .env      # puis éditer : JWT_SECRET, ADMIN_*
+docker compose up -d --build
+```
+
+Chaque push sur `main` republie l'image sur GHCR ; sur un serveur lancé avec [`docker-compose.prod.yml`](docker-compose.prod.yml), Watchtower la récupère toute seule au bout de quelques minutes — aucune mise à jour manuelle à faire.
 
 ### Variables d'environnement
 
 | Variable | Rôle | Requis |
 |---|---|---|
 | `JWT_SECRET` | Signature des sessions — générer avec `openssl rand -hex 32` | ✅ |
-| `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Compte admin initial (créé au premier boot s'il n'existe pas) | ✅ |
+| `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Compte admin initial | ✅ |
 | `PORT` | Port HTTP exposé | non (3000) |
-| `DATA_DIR` | Dossier de données | non (`/data`) |
 
-Aucun secret en dur, aucune clé d'API à obtenir.
+## Un catalogue sans clé d'API
 
-## 🔄 Déploiement continu
+| Contenu | Source |
+|---|---|
+| Séries & animes | [TVmaze](https://www.tvmaze.com/api) — recherche, fiches, saisons/épisodes, notes |
+| Films — recherche | [Wikipédia](https://fr.wikipedia.org) |
+| Films — tendances | [iTunes](https://itunes.apple.com) |
 
-Chaque push sur `main` met le site à jour **tout seul** :
+Compromis assumé : certains films n'ont pas de durée ou de note publique selon la source — c'est le prix de l'absence totale de clé d'API à demander à vos utilisateurs.
+
+**Import TV Time** : la page Profil accepte directement l'export RGPD téléchargé sur [gdpr.tvtime.com](https://gdpr.tvtime.com/gdpr/self-service) — l'import tourne en fond avec une barre de progression, pas besoin de tout ressaisir à la main.
+
+## Sous le capot
 
 ```
-push sur main ──► GitHub Actions ──► image publiée sur GHCR
-                                            │
-    serveur à jour ◄── Watchtower (vérifie /5 min) ◄┘
+┌─────────────────────────────────────────────────┐
+│               Conteneur Docker unique            │
+│                                                   │
+│  React (statique) ──► Express (API + fichiers)   │
+│                          │                       │
+│                          ├──► SQLite  ──┐        │
+│                          │              ▼        │
+│                          │        volume /data    │
+│                          │      (BDD + avatars)   │
+│                          ▼                       │
+│              TVmaze · iTunes · Wikipédia         │
+│               (catalogue, sans clé d'API)        │
+└─────────────────────────────────────────────────┘
 ```
 
-1. À chaque push sur `main`, le [workflow GitHub Actions](.github/workflows/docker-publish.yml) build l'image Docker et la publie sur **GHCR** : [`ghcr.io/estemobs/tvtracker`](https://github.com/Estemobs/tvtracker/pkgs/container/tvtracker) avec les tags `latest` + `sha-<commit>` (une branche `dev` publierait `:dev`).
-2. Sur le serveur, [`docker-compose.prod.yml`](docker-compose.prod.yml) tire l'image depuis GHCR et lance **Watchtower** à côté, qui redéploie automatiquement le conteneur dès qu'une nouvelle image apparaît :
+React + Vite + Tailwind côté client, Node.js + Express côté serveur (sert l'API **et** le front sur le même port), SQLite dans un simple fichier. Auth par JWT + bcrypt, verrouillage anti brute-force.
+
+## Développement
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d
-```
-
-- **Les données survivent à tout** : le volume `tvtracker_data` (SQLite + avatars) n'est jamais touché par une mise à jour.
-- **Rollback** : remplacer `latest` par un tag `sha-<commit>` dans le compose et relancer.
-- Le `docker-compose.yml` de base (build local) reste là pour le développement.
-- Alternative à Watchtower : définir la variable de dépôt `DEPLOY_WEBHOOK_URL` dans GitHub (Settings → Secrets and variables → Actions → Variables) — le workflow appellera cette URL après chaque build pour déclencher un redéploiement immédiat côté hébergeur.
-
-### Mettre à jour l'instance
-
-**Première installation** (une seule fois, sur le serveur) :
-
-```bash
-mkdir -p /opt/tvtracker && cd /opt/tvtracker
-curl -o docker-compose.prod.yml https://raw.githubusercontent.com/Estemobs/tvtracker/main/docker-compose.prod.yml
-cat > .env <<'EOF'
-JWT_SECRET=...        # généré avec: openssl rand -hex 32
-ADMIN_USERNAME=admin
-ADMIN_EMAIL=...
-ADMIN_PASSWORD=...
-EOF
-docker compose -f docker-compose.prod.yml up -d
-```
-
-**Après ça, c'est automatique** : chaque push sur `main` republie l'image sur GHCR, et Watchtower (lancé par ce même compose) la détecte et redéploie tout seul, en général dans les 5 minutes. Rien à refaire manuellement.
-
-**Si ça ne se met pas à jour**, vérifier d'abord les logs de Watchtower :
-
-```bash
-docker logs tvtracker-watchtower
-```
-
-Erreur connue : `client version 1.25 is too old. Minimum supported API version is 1.40` — l'image `containrrr/watchtower` embarque un vieux client Docker par défaut, incompatible avec les versions récentes du moteur Docker. Le `docker-compose.prod.yml` du dépôt fixe déjà `DOCKER_API_VERSION=1.41` pour corriger ça ; si l'erreur apparaît quand même, s'assurer d'avoir bien la dernière version du fichier compose (`curl` la commande ci-dessus à nouveau pour l'écraser) puis `docker compose -f docker-compose.prod.yml up -d` pour recréer Watchtower avec la bonne config.
-
-**Forcer une mise à jour immédiate** sans attendre Watchtower :
-
-```bash
-cd /opt/tvtracker   # ou le dossier où se trouve docker-compose.prod.yml
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d
-```
-
-**Vérifier la version déployée** : le commit exact tourne dans l'appli est visible dans la barre latérale, juste à côté de « Se déconnecter » (cliquable vers GitHub), ou directement via `curl http://<serveur>:3000/api/version`. Pour comparer avec le dernier commit sur GitHub : [github.com/Estemobs/tvtracker/commits/main](https://github.com/Estemobs/tvtracker/commits/main). Si les deux hash correspondent, l'instance est à jour.
-
-## 🧑‍💻 Développement
-
-```bash
-# Backend (Node 20 recommandé — better-sqlite3 est un module natif compilé)
+# Backend (Node 20 — better-sqlite3 est un module natif compilé)
 cd backend && npm install
 JWT_SECRET=dev ADMIN_EMAIL=admin@test.com ADMIN_USERNAME=admin ADMIN_PASSWORD=adminpass npm run dev
 
@@ -161,26 +130,12 @@ cd frontend && npm install
 npm run dev
 ```
 
-### Structure du dépôt
-
 ```
-backend/
-  src/
-    db/            connexion SQLite + migrations SQL (jouées au boot)
-    middleware/    auth JWT, garde admin
-    routes/        auth, admin, shows, movies, explore, profile
-    services/      tvmaze.js, itunes.js, wikipedia.js, catalog.js (cache)
-frontend/
-  src/
-    pages/         Series, Movies, Explore, Profile, Admin, Login, Register
-    components/    NavBar, PosterCard, ProgressBar, Skeleton
-    context/       AuthContext (session)
-    api/           client fetch + gestion du token
-Dockerfile             build multi-stage → image finale ~250 Mo
-docker-compose.yml     développement (build local)
-docker-compose.prod.yml  production (GHCR + Watchtower)
+backend/src/
+  db/          connexion SQLite + migrations (jouées au boot)
+  routes/      auth, admin, shows, movies, explore, profile
+  services/    tvmaze.js, itunes.js, wikipedia.js, catalog.js (cache)
+frontend/src/
+  pages/       Series, Movies, Explore, Profile, Admin
+  components/  NavBar, PosterCard, ProgressBar
 ```
-
-## 📋 Statut
-
-Réalisé : **Lot 1** (auth + validation admin, Séries complet, Explorer, Docker + CI/CD) et **Lot 2** (Films, Profil + statistiques) du [cahier des charges](cahier-des-charges-tvtracker.md). Reste en option (Lot 3/4) : thème clair, graphiques avancés, import d'historique, notifications.
