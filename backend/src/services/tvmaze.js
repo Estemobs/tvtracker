@@ -59,17 +59,7 @@ function mapShow(show) {
 
 export async function searchShows(query) {
   const data = await tvmazeFetch(`/search/shows?q=${encodeURIComponent(query)}`);
-  const shows = data.map((r) => mapShow(r.show));
-  // /search/shows doesn't support ?embed, so season counts need one lightweight call per result.
-  const withSeasons = await Promise.all(shows.map(async (show) => {
-    try {
-      const seasons = await tvmazeFetch(`/shows/${show.source_id}/seasons`);
-      return { ...show, nb_seasons: seasons.length };
-    } catch {
-      return show;
-    }
-  }));
-  return withSeasons;
+  return data.map((r) => mapShow(r.show));
 }
 
 export async function scheduleHighlights() {
