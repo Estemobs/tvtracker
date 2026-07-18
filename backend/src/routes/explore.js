@@ -51,14 +51,57 @@ router.get('/search', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Ranks locally-tracked shows/movies by how many of this app's own users follow them — the one
+// "most watched" signal we can offer honestly, since none of our keyless sources (TVmaze,
+// iTunes, Wikipedia) expose real viewership data.
+function mostFollowedContent() {
+  const showRows = db.prepare(`
+    SELECT s.source, s.source_id, s.type, s.title, s.poster, s.note, s.nb_seasons, COUNT(us.user_id) AS followers
+    FROM shows s JOIN user_shows us ON us.show_id = s.id
+    GROUP BY s.id
+    ORDER BY followers DESC
+    LIMIT 20
+  `).all().map((r) => ({
+    source: r.source, source_id: r.source_id, media_type: 'tv', type: r.type,
+    title: r.title, poster: r.poster, year: null, note: r.note, nb_seasons: r.nb_seasons, followers: r.followers,
+  }));
+  const movieRows = db.prepare(`
+    SELECT m.source, m.source_id, m.title, m.poster, m.release_date, COUNT(um.user_id) AS followers
+    FROM movies m JOIN user_movies um ON um.movie_id = m.id
+    GROUP BY m.id
+    ORDER BY followers DESC
+    LIMIT 20
+  `).all().map((r) => ({
+    source: r.source, source_id: r.source_id, media_type: 'movie', type: 'movie',
+    title: r.title, poster: r.poster, year: (r.release_date || '').slice(0, 4), note: null, followers: r.followers,
+  }));
+  return [...showRows, ...movieRows].sort((a, b) => b.followers - a.followers).slice(0, 20);
+}
+
 router.get('/trending', async (req, res, next) => {
   try {
-    const { media_type = 'all' } = req.query;
+    const currentYear = new Date().getFullYear();
     const [shows, movies] = await Promise.all([
-      media_type === 'movie' ? [] : tvmaze.scheduleHighlights().catch(() => []),
-      media_type === 'tv' || media_type === 'anime' ? [] : itunes.topMovies().catch(() => []),
+      tvmaze.scheduleHighlights().catch(() => []),
+      itunes.topMovies().catch(() => []),
     ]);
-    res.json(annotateAdded(req, dedupe([...shows, ...movies])));
+
+    const series = dedupe(shows.filter((s) => s.type === 'serie'));
+    const animes = dedupe(shows.filter((s) => s.type === 'anime'));
+    const uniqueMovies = dedupe(movies);
+    const newSeries = series.filter((s) => s.year && Number(s.year) >= currentYear - 1);
+    const newMovies = uniqueMovies.filter((m) => m.year && Number(m.year) >= currentYear - 1);
+    const mostFollowed = dedupe(mostFollowedContent());
+
+    res.json({
+      trending: annotateAdded(req, dedupe([...shows, ...movies])),
+      series: annotateAdded(req, series),
+      animes: annotateAdded(req, animes),
+      movies: annotateAdded(req, uniqueMovies),
+      new_series: annotateAdded(req, newSeries),
+      new_movies: annotateAdded(req, newMovies),
+      most_followed: annotateAdded(req, mostFollowed),
+    });
   } catch (e) { next(e); }
 });
 

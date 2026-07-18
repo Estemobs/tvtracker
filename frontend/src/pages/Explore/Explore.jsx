@@ -3,36 +3,57 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { PosterGridSkeleton } from '../../components/Skeleton.jsx';
 
+function Poster({ r }) {
+  return (
+    <Link
+      to={`/explorer/${r.media_type}/${r.source}/${encodeURIComponent(r.source_id)}`}
+      className="group flex flex-col gap-2"
+    >
+      <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
+        {r.poster ? (
+          <img src={r.poster} alt={r.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs p-2 text-center">{r.title}</div>
+        )}
+        {r.already_added && (
+          <span className="absolute top-1.5 right-1.5 bg-green-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
+            Déjà ajouté
+          </span>
+        )}
+      </div>
+      <div className="text-sm font-medium truncate">{r.title}</div>
+      <div className="text-xs text-gray-400 -mt-1.5">{r.year} {r.note ? `· ⭐ ${r.note.toFixed(1)}` : ''}</div>
+      {r.nb_seasons ? (
+        <div className="text-[11px] text-gray-500 -mt-1.5">{r.nb_seasons} saison{r.nb_seasons > 1 ? 's' : ''}</div>
+      ) : null}
+    </Link>
+  );
+}
+
 function ResultGrid({ results }) {
   if (!results.length) return <p className="text-gray-400 text-sm">Aucun résultat.</p>;
   return (
     <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       {results.map((r) => (
-        <Link
-          key={`${r.source}-${r.source_id}`}
-          to={`/explorer/${r.media_type}/${r.source}/${encodeURIComponent(r.source_id)}`}
-          className="group flex flex-col gap-2"
-        >
-          <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
-            {r.poster ? (
-              <img src={r.poster} alt={r.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs p-2 text-center">{r.title}</div>
-            )}
-            {r.already_added && (
-              <span className="absolute top-1.5 right-1.5 bg-green-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
-                Déjà ajouté
-              </span>
-            )}
-          </div>
-          <div className="text-sm font-medium truncate">{r.title}</div>
-          <div className="text-xs text-gray-400 -mt-1.5">{r.year} {r.note ? `· ⭐ ${r.note.toFixed(1)}` : ''}</div>
-          {r.nb_seasons ? (
-            <div className="text-[11px] text-gray-500 -mt-1.5">{r.nb_seasons} saison{r.nb_seasons > 1 ? 's' : ''}</div>
-          ) : null}
-        </Link>
+        <Poster key={`${r.source}-${r.source_id}`} r={r} />
       ))}
     </div>
+  );
+}
+
+function CategoryRow({ title, items }) {
+  if (!items || !items.length) return null;
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-gray-400 mb-3">{title}</h2>
+      <div className="flex gap-4 overflow-x-auto pb-2">
+        {items.map((r) => (
+          <div key={`${r.source}-${r.source_id}`} className="w-32 sm:w-36 flex-shrink-0">
+            <Poster r={r} />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -40,10 +61,10 @@ export default function Explore() {
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
-  const [trending, setTrending] = useState(null);
+  const [categories, setCategories] = useState(null);
 
   useEffect(() => {
-    api.get('/explore/trending?media_type=all').then(setTrending).catch(() => setTrending([]));
+    api.get('/explore/trending').then(setCategories).catch(() => setCategories({}));
   }, []);
 
   useEffect(() => {
@@ -93,11 +114,18 @@ export default function Explore() {
           <h2 className="text-sm font-semibold text-gray-400 mb-3">Résultats</h2>
           {results === null ? <PosterGridSkeleton /> : <ResultGrid results={filterByTab(results)} />}
         </section>
+      ) : categories === null ? (
+        <PosterGridSkeleton />
       ) : (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 mb-3">Tendances</h2>
-          {trending === null ? <PosterGridSkeleton /> : <ResultGrid results={filterByTab(trending)} />}
-        </section>
+        <div className="space-y-6">
+          <CategoryRow title="Tendances" items={filterByTab(categories.trending)} />
+          <CategoryRow title="Les plus suivis sur TVTracker" items={filterByTab(categories.most_followed)} />
+          <CategoryRow title="Nouvelles séries" items={tab === 'all' || tab === 'serie' ? categories.new_series : []} />
+          <CategoryRow title="Nouveaux films" items={tab === 'all' || tab === 'movie' ? categories.new_movies : []} />
+          <CategoryRow title="Séries populaires" items={tab === 'all' || tab === 'serie' ? categories.series : []} />
+          <CategoryRow title="Animes populaires" items={tab === 'all' || tab === 'anime' ? categories.animes : []} />
+          <CategoryRow title="Films populaires" items={tab === 'all' || tab === 'movie' ? categories.movies : []} />
+        </div>
       )}
     </div>
   );
