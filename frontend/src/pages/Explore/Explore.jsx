@@ -117,15 +117,26 @@ export default function Explore() {
       ) : categories === null ? (
         <PosterGridSkeleton />
       ) : (
-        <div className="space-y-6">
-          <CategoryRow title="Tendances" items={filterByTab(categories.trending)} />
-          <CategoryRow title="Les plus suivis sur TVTracker" items={filterByTab(categories.most_followed)} />
-          <CategoryRow title="Nouvelles séries" items={tab === 'all' || tab === 'serie' ? categories.new_series : []} />
-          <CategoryRow title="Nouveaux films" items={tab === 'all' || tab === 'movie' ? categories.new_movies : []} />
-          <CategoryRow title="Séries populaires" items={tab === 'all' || tab === 'serie' ? categories.series : []} />
-          <CategoryRow title="Animes populaires" items={tab === 'all' || tab === 'anime' ? categories.animes : []} />
-          <CategoryRow title="Films populaires" items={tab === 'all' || tab === 'movie' ? categories.movies : []} />
-        </div>
+        (() => {
+          const rows = [
+            ['Tendances', filterByTab(categories.trending)],
+            ['Les plus suivis sur TVTracker', filterByTab(categories.most_followed)],
+            ['Nouvelles séries', tab === 'all' || tab === 'serie' ? categories.new_series : []],
+            ['Nouveaux films', tab === 'all' || tab === 'movie' ? categories.new_movies : []],
+            ['Séries populaires', tab === 'all' || tab === 'serie' ? categories.series : []],
+            ['Animes populaires', tab === 'all' || tab === 'anime' ? categories.animes : []],
+            ['Films populaires', tab === 'all' || tab === 'movie' ? categories.movies : []],
+          ];
+          const hasAny = rows.some(([, items]) => items && items.length);
+          if (!hasAny) return <p className="text-gray-400 text-sm">Aucun résultat.</p>;
+          return (
+            <div className="space-y-6">
+              {rows.map(([title, items]) => (
+                <CategoryRow key={title} title={title} items={items} />
+              ))}
+            </div>
+          );
+        })()
       )}
     </div>
   );

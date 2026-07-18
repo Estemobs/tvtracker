@@ -18,12 +18,20 @@ function StatCard({ label, value }) {
 }
 
 function CompletedGrid({ title, items }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-400 mb-2">{title} ({items.length})</h3>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        disabled={items.length === 0}
+        className="w-full flex items-center justify-between text-sm font-semibold text-gray-400 mb-2 disabled:cursor-default"
+      >
+        <span>{title} ({items.length})</span>
+        {items.length > 0 && <span className="text-xs">{expanded ? '▲' : '▼'}</span>}
+      </button>
       {items.length === 0 ? (
         <p className="text-xs text-gray-500">Rien pour l'instant.</p>
-      ) : (
+      ) : expanded ? (
         <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-6 gap-3">
           {items.map((it) => (
             <div key={`${it.source}-${it.source_id}`} className="aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
@@ -35,7 +43,7 @@ function CompletedGrid({ title, items }) {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
