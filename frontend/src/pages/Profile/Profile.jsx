@@ -278,15 +278,15 @@ export default function Profile() {
           />
           <p className="text-xs text-gray-500">
             Message envoyé sur Discord. Jokers disponibles : {'{titre}'}, {'{episode}'} (ex. S1E5), {'{saison}'}, {'{numero}'}, {'{date}'}.
-            Laisse vide pour le message par défaut.
+            Laisse vide pour le message par défaut. Tu peux inclure une mention (ex. {'@everyone'} ou {'<@&idDuRole>'}) : elle notifiera bien les membres du salon.
           </p>
 
           <div className="space-y-1.5">
             <p className="text-[11px] uppercase tracking-wide text-gray-500">Aperçu</p>
             <p className="text-sm font-medium">TVTracker <span className="text-[10px] bg-accent-600/70 rounded px-1 py-0.5 align-middle">BOT</span></p>
+            <p className="text-sm text-gray-200">{previewDiscordMessage(form.discord_message_template)}</p>
             <div className="bg-[#2b2d31] border-l-4 border-[#5865f2] rounded-r-lg p-3 max-w-md">
               <p className="text-sm font-semibold text-gray-100">Ma Série (exemple)</p>
-              <p className="text-sm text-gray-300 mt-1">{previewDiscordMessage(form.discord_message_template)}</p>
               <p className="text-xs text-gray-500 mt-2">Diffusion prévue le {new Date().toISOString().slice(0, 10)}</p>
             </div>
           </div>

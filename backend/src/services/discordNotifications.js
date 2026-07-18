@@ -1,4 +1,5 @@
 import { db } from '../db/index.js';
+import { cacheShow } from './catalog.js';
 
 const DISCORD_WEBHOOK_RE = /^https:\/\/(?:canary\.)?(?:discord(?:app)?\.com)\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+(?:\?.*)?$/i;
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
@@ -56,16 +57,18 @@ export function buildPayload(showTitle, nextEpisode, poster, messageTemplate) {
     episode: episodeLabel,
     date: nextEpisode.air_date,
   };
-  const description = renderMessageTemplate(messageTemplate || DEFAULT_MESSAGE_TEMPLATE, vars);
+  const content = renderMessageTemplate(messageTemplate || DEFAULT_MESSAGE_TEMPLATE, vars);
 
-  // No top-level `content` — everything (message, show, air date, poster) lives inside a single
-  // embed so Discord doesn't render a redundant plain-text line above the card.
+  // The message goes in top-level `content`, not the embed: Discord only pings/notifies for
+  // mentions (roles, users, @everyone) placed in `content` — a mention inside an embed's title,
+  // description or fields is rendered but silent, so a user putting a role mention in their
+  // template would never actually get notified.
   const payload = {
     username: 'TVTracker',
+    content,
     embeds: [
       {
         title: showTitle,
-        description,
         color: 0x5865f2,
         footer: { text: `Diffusion prévue le ${nextEpisode.air_date}` },
       },
@@ -93,6 +96,7 @@ export async function sweepDiscordNotifications() {
         us.discord_last_notified_episode_key,
         s.title,
         s.poster,
+        s.source_id,
         s.next_episode_json
       FROM users u
       JOIN user_shows us ON us.user_id = u.id
@@ -105,11 +109,29 @@ export async function sweepDiscordNotifications() {
 
     const today = new Date().toISOString().slice(0, 10);
     const targets = new Map();
+    // Nothing else refreshes a show's cached `next_episode_json` unless a user happens to open its
+    // page — left alone, a show nobody browses can sit with stale/outdated episode data for days,
+    // so by the time it's finally refreshed the "next" episode has long since aired and this sweep
+    // fires late (or batches several past-due shows at once). Refreshing here, once per distinct
+    // show per sweep, keeps the data this check relies on at most a day old regardless of traffic.
+    const refreshedShows = new Map();
 
     for (const row of rows) {
+      let nextEpisodeJson = row.next_episode_json;
+      if (!refreshedShows.has(row.show_id)) {
+        try {
+          const refreshed = await cacheShow(row.source_id);
+          refreshedShows.set(row.show_id, refreshed?.next_episode_json ?? row.next_episode_json);
+        } catch (error) {
+          console.error('[discord-notify] refresh failed for show', row.show_id, error);
+          refreshedShows.set(row.show_id, row.next_episode_json);
+        }
+      }
+      nextEpisodeJson = refreshedShows.get(row.show_id);
+
       let nextEpisode = null;
       try {
-        nextEpisode = JSON.parse(row.next_episode_json);
+        nextEpisode = JSON.parse(nextEpisodeJson);
       } catch {
         continue;
       }
