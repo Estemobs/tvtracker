@@ -60,10 +60,16 @@ function CompletedGrid({ title, items }) {
 export default function Profile() {
   const { user, setUser } = useAuth();
   const [stats, setStats] = useState(null);
-  const [form, setForm] = useState({ username: user.username, email: user.email, discord_webhook_url: user.discord_webhook_url || '' });
+  const [form, setForm] = useState({
+    username: user.username,
+    email: user.email,
+    discord_webhook_url: user.discord_webhook_url || '',
+    discord_message_template: user.discord_message_template || '',
+  });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [discordTestState, setDiscordTestState] = useState({ status: 'idle', text: '' });
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(null);
   const [importResult, setImportResult] = useState(null);
