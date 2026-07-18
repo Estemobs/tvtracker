@@ -281,10 +281,14 @@ export default function Profile() {
             Laisse vide pour le message par défaut.
           </p>
 
-          <div className="bg-base-900 border border-base-700 rounded-lg p-3 space-y-1">
+          <div className="space-y-1.5">
             <p className="text-[11px] uppercase tracking-wide text-gray-500">Aperçu</p>
-            <p className="text-sm font-medium">TVTracker</p>
-            <p className="text-sm text-gray-200">{previewDiscordMessage(form.discord_message_template)}</p>
+            <p className="text-sm font-medium">TVTracker <span className="text-[10px] bg-accent-600/70 rounded px-1 py-0.5 align-middle">BOT</span></p>
+            <div className="bg-[#2b2d31] border-l-4 border-[#5865f2] rounded-r-lg p-3 max-w-md">
+              <p className="text-sm font-semibold text-gray-100">Ma Série (exemple)</p>
+              <p className="text-sm text-gray-300 mt-1">{previewDiscordMessage(form.discord_message_template)}</p>
+              <p className="text-xs text-gray-500 mt-2">Diffusion prévue le {new Date().toISOString().slice(0, 10)}</p>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">

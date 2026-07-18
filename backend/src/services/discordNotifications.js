@@ -56,15 +56,16 @@ export function buildPayload(showTitle, nextEpisode, poster, messageTemplate) {
     episode: episodeLabel,
     date: nextEpisode.air_date,
   };
-  const content = renderMessageTemplate(messageTemplate || DEFAULT_MESSAGE_TEMPLATE, vars);
+  const description = renderMessageTemplate(messageTemplate || DEFAULT_MESSAGE_TEMPLATE, vars);
 
+  // No top-level `content` — everything (message, show, air date, poster) lives inside a single
+  // embed so Discord doesn't render a redundant plain-text line above the card.
   const payload = {
     username: 'TVTracker',
-    content,
     embeds: [
       {
         title: showTitle,
-        description: `L'épisode ${episodeLabel} est maintenant disponible.`,
+        description,
         color: 0x5865f2,
         footer: { text: `Diffusion prévue le ${nextEpisode.air_date}` },
       },
