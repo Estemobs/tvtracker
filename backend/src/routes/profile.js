@@ -6,6 +6,7 @@ import multer from 'multer';
 import { db, DATA_DIR } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { importTvTimeArchive } from '../services/tvtimeImport.js';
+import { normalizeDiscordWebhookUrl } from '../services/discordNotifications.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -61,6 +62,14 @@ router.patch('/', (req, res) => {
   if (language) {
     if (!['fr', 'en'].includes(language)) return res.status(400).json({ error: 'Langue invalide.' });
     updates.push('language = ?'); values.push(language);
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'discord_webhook_url')) {
+    try {
+      updates.push('discord_webhook_url = ?');
+      values.push(normalizeDiscordWebhookUrl(req.body.discord_webhook_url));
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
   }
   if (!updates.length) return res.status(400).json({ error: 'Aucune modification fournie.' });
 

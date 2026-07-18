@@ -43,7 +43,7 @@ function CompletedGrid({ title, items }) {
 export default function Profile() {
   const { user, setUser } = useAuth();
   const [stats, setStats] = useState(null);
-  const [form, setForm] = useState({ username: user.username, email: user.email });
+  const [form, setForm] = useState({ username: user.username, email: user.email, discord_webhook_url: user.discord_webhook_url || '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -59,8 +59,9 @@ export default function Profile() {
     e.preventDefault();
     setError(''); setMessage('');
     try {
-      await api.patch('/profile', form);
-      setUser((prev) => ({ ...prev, ...form }));
+      const payload = { ...form, discord_webhook_url: form.discord_webhook_url.trim() };
+      await api.patch('/profile', payload);
+      setUser((prev) => ({ ...prev, ...payload, discord_webhook_url: payload.discord_webhook_url || null }));
       setMessage('Profil mis à jour.');
     } catch (err) {
       setError(err.message);
@@ -211,6 +212,16 @@ export default function Profile() {
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
+          <input
+            type="url"
+            placeholder="Lien du webhook Discord"
+            className="w-full rounded-lg bg-base-800 border border-base-600 px-3 py-2 text-sm"
+            value={form.discord_webhook_url}
+            onChange={(e) => setForm({ ...form, discord_webhook_url: e.target.value })}
+          />
+          <p className="text-xs text-gray-500">
+            Colle ici l'URL du webhook du salon Discord où tu veux recevoir l'alerte quand un épisode est disponible.
+          </p>
           <button className="bg-accent-600 hover:bg-accent-500 text-sm rounded-lg px-3 py-2 font-medium">Enregistrer</button>
         </form>
 

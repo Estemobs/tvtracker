@@ -109,7 +109,15 @@ router.post('/login', loginLimiter, (req, res) => {
   const token = signToken(user);
   res.json({
     token,
-    user: { id: user.id, username: user.username, email: user.email, role: user.role, avatar: user.avatar, language: user.language },
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      language: user.language,
+      discord_webhook_url: user.discord_webhook_url,
+    },
   });
 });
 
