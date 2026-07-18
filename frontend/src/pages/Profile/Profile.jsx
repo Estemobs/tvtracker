@@ -82,12 +82,34 @@ export default function Profile() {
     e.preventDefault();
     setError(''); setMessage('');
     try {
-      const payload = { ...form, discord_webhook_url: form.discord_webhook_url.trim() };
+      const payload = {
+        ...form,
+        discord_webhook_url: form.discord_webhook_url.trim(),
+        discord_message_template: form.discord_message_template.trim(),
+      };
       await api.patch('/profile', payload);
-      setUser((prev) => ({ ...prev, ...payload, discord_webhook_url: payload.discord_webhook_url || null }));
+      setUser((prev) => ({
+        ...prev,
+        ...payload,
+        discord_webhook_url: payload.discord_webhook_url || null,
+        discord_message_template: payload.discord_message_template || null,
+      }));
       setMessage('Profil mis à jour.');
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const testDiscordWebhook = async () => {
+    setDiscordTestState({ status: 'sending', text: 'Envoi en cours…' });
+    try {
+      const data = await api.post('/profile/discord-webhook/test', {
+        discord_webhook_url: form.discord_webhook_url.trim(),
+        discord_message_template: form.discord_message_template.trim(),
+      });
+      setDiscordTestState({ status: 'success', text: data.message });
+    } catch (err) {
+      setDiscordTestState({ status: 'error', text: err.message });
     }
   };
 
@@ -245,7 +267,39 @@ export default function Profile() {
           <p className="text-xs text-gray-500">
             Colle ici l'URL du webhook du salon Discord où tu veux recevoir l'alerte quand un épisode est disponible.
           </p>
-          <button className="bg-accent-600 hover:bg-accent-500 text-sm rounded-lg px-3 py-2 font-medium">Enregistrer</button>
+
+          <textarea
+            placeholder={DEFAULT_DISCORD_TEMPLATE}
+            rows={2}
+            maxLength={300}
+            className="w-full rounded-lg bg-base-800 border border-base-600 px-3 py-2 text-sm resize-none"
+            value={form.discord_message_template}
+            onChange={(e) => setForm({ ...form, discord_message_template: e.target.value })}
+          />
+          <p className="text-xs text-gray-500">
+            Message envoyé sur Discord. Jokers disponibles : {'{titre}'}, {'{episode}'} (ex. S1E5), {'{saison}'}, {'{numero}'}, {'{date}'}.
+            Laisse vide pour le message par défaut.
+          </p>
+
+          <div className="bg-base-900 border border-base-700 rounded-lg p-3 space-y-1">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">Aperçu</p>
+            <p className="text-sm font-medium">TVTracker</p>
+            <p className="text-sm text-gray-200">{previewDiscordMessage(form.discord_message_template)}</p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button className="bg-accent-600 hover:bg-accent-500 text-sm rounded-lg px-3 py-2 font-medium">Enregistrer</button>
+            <button
+              type="button"
+              onClick={testDiscordWebhook}
+              disabled={!form.discord_webhook_url.trim() || discordTestState.status === 'sending'}
+              className="bg-base-800 hover:bg-base-700 border border-base-600 text-sm rounded-lg px-3 py-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {discordTestState.status === 'sending' ? 'Envoi…' : 'Tester le webhook'}
+            </button>
+          </div>
+          {discordTestState.status === 'success' && <p className="text-sm text-green-400">{discordTestState.text}</p>}
+          {discordTestState.status === 'error' && <p className="text-sm text-red-400">{discordTestState.text}</p>}
         </form>
 
         <div>
