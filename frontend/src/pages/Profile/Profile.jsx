@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { api } from '../../api/client.js';
 
+const DEFAULT_DISCORD_TEMPLATE = 'Nouvel épisode disponible pour {titre} : {episode}';
+
+// Mirrors the backend's renderMessageTemplate() in discordNotifications.js, using example data
+// so the user sees exactly what a real notification will look like before saving/testing it.
+function previewDiscordMessage(template) {
+  const vars = { titre: 'Ma Série (exemple)', saison: '1', numero: '1', episode: 'S1E1', date: new Date().toISOString().slice(0, 10) };
+  return (template || DEFAULT_DISCORD_TEMPLATE).replace(/\{(titre|saison|numero|episode|date)\}/g, (_, key) => vars[key]);
+}
+
 function formatMinutes(min) {
   const h = Math.floor(min / 60);
   const m = min % 60;

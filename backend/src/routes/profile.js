@@ -3,10 +3,17 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { db, DATA_DIR } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { importTvTimeArchive } from '../services/tvtimeImport.js';
-import { normalizeDiscordWebhookUrl } from '../services/discordNotifications.js';
+import {
+  normalizeDiscordWebhookUrl,
+  normalizeDiscordMessageTemplate,
+  DEFAULT_MESSAGE_TEMPLATE,
+  buildPayload,
+  sendWebhook,
+} from '../services/discordNotifications.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -71,6 +78,14 @@ router.patch('/', (req, res) => {
       return res.status(400).json({ error: e.message });
     }
   }
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'discord_message_template')) {
+    try {
+      updates.push('discord_message_template = ?');
+      values.push(normalizeDiscordMessageTemplate(req.body.discord_message_template));
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+  }
   if (!updates.length) return res.status(400).json({ error: 'Aucune modification fournie.' });
 
   try {
@@ -80,6 +95,49 @@ router.patch('/', (req, res) => {
     throw e;
   }
   res.json({ message: 'Profil mis à jour.' });
+});
+
+// Sends a real webhook call to Discord, so cap it hard enough to prevent someone from turning
+// this into a free webhook-spamming relay while still allowing a handful of iterative retries.
+const discordTestLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => String(req.user.id),
+  message: { error: 'Trop de tests envoyés, réessaie dans quelques minutes.' },
+});
+
+router.post('/discord-webhook/test', discordTestLimiter, async (req, res) => {
+  const body = req.body || {};
+  let webhookUrl;
+  try {
+    webhookUrl = Object.prototype.hasOwnProperty.call(body, 'discord_webhook_url')
+      ? normalizeDiscordWebhookUrl(body.discord_webhook_url)
+      : req.user.discord_webhook_url;
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  if (!webhookUrl) return res.status(400).json({ error: 'Aucun lien de webhook Discord à tester.' });
+
+  let messageTemplate;
+  try {
+    messageTemplate = Object.prototype.hasOwnProperty.call(body, 'discord_message_template')
+      ? normalizeDiscordMessageTemplate(body.discord_message_template)
+      : req.user.discord_message_template;
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+
+  const exampleEpisode = { season: 1, episode_number: 1, air_date: new Date().toISOString().slice(0, 10) };
+  const payload = buildPayload('Ma Série (exemple)', exampleEpisode, null, messageTemplate);
+
+  try {
+    await sendWebhook(webhookUrl, payload);
+  } catch (e) {
+    return res.status(502).json({ error: e.message });
+  }
+  res.json({ message: 'Notification de test envoyée sur Discord.' });
 });
 
 router.post('/avatar', upload.single('avatar'), (req, res) => {

@@ -117,6 +117,7 @@ router.post('/login', loginLimiter, (req, res) => {
       avatar: user.avatar,
       language: user.language,
       discord_webhook_url: user.discord_webhook_url,
+      discord_message_template: user.discord_message_template,
     },
   });
 });

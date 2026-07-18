@@ -2,6 +2,10 @@ import { db } from '../db/index.js';
 
 const DISCORD_WEBHOOK_RE = /^https:\/\/(?:canary\.)?(?:discord(?:app)?\.com)\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+(?:\?.*)?$/i;
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+const MESSAGE_MAX_LENGTH = 300;
+const PLACEHOLDER_RE = /\{(titre|saison|numero|episode|date)\}/g;
+
+export const DEFAULT_MESSAGE_TEMPLATE = 'Nouvel épisode disponible pour {titre} : {episode}';
 
 let sweepRunning = false;
 let sweepTimer = null;
@@ -16,7 +20,22 @@ export function normalizeDiscordWebhookUrl(value) {
   return trimmed;
 }
 
-async function sendWebhook(url, payload) {
+export function normalizeDiscordMessageTemplate(value) {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (trimmed.length > MESSAGE_MAX_LENGTH) {
+    throw new Error(`Le message est trop long (${MESSAGE_MAX_LENGTH} caractères max).`);
+  }
+  return trimmed;
+}
+
+// Placeholders: {titre} nom de la série, {episode} "S1E5", {saison}, {numero}, {date} de diffusion.
+export function renderMessageTemplate(template, vars) {
+  return template.replace(PLACEHOLDER_RE, (_, key) => vars[key] ?? '');
+}
+
+export async function sendWebhook(url, payload) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -28,11 +47,20 @@ async function sendWebhook(url, payload) {
   }
 }
 
-function buildPayload(showTitle, nextEpisode, poster) {
+export function buildPayload(showTitle, nextEpisode, poster, messageTemplate) {
   const episodeLabel = `S${nextEpisode.season}E${nextEpisode.episode_number}`;
+  const vars = {
+    titre: showTitle,
+    saison: String(nextEpisode.season),
+    numero: String(nextEpisode.episode_number),
+    episode: episodeLabel,
+    date: nextEpisode.air_date,
+  };
+  const content = renderMessageTemplate(messageTemplate || DEFAULT_MESSAGE_TEMPLATE, vars);
+
   const payload = {
     username: 'TVTracker',
-    content: `Nouvel épisode disponible pour ${showTitle} : ${episodeLabel}`,
+    content,
     embeds: [
       {
         title: showTitle,
@@ -59,6 +87,7 @@ export async function sweepDiscordNotifications() {
       SELECT
         u.id AS user_id,
         u.discord_webhook_url,
+        u.discord_message_template,
         us.show_id,
         us.discord_last_notified_episode_key,
         s.title,
@@ -93,6 +122,7 @@ export async function sweepDiscordNotifications() {
       if (!targets.has(targetKey)) {
         targets.set(targetKey, {
           webhookUrl: row.discord_webhook_url,
+          messageTemplate: row.discord_message_template,
           showTitle: row.title,
           poster: row.poster,
           episodeKey,
@@ -105,7 +135,7 @@ export async function sweepDiscordNotifications() {
 
     for (const target of targets.values()) {
       try {
-        await sendWebhook(target.webhookUrl, buildPayload(target.showTitle, target.nextEpisode, target.poster));
+        await sendWebhook(target.webhookUrl, buildPayload(target.showTitle, target.nextEpisode, target.poster, target.messageTemplate));
         const update = db.prepare(`UPDATE user_shows SET discord_last_notified_episode_key = ? WHERE user_id = ? AND show_id = ?`);
         for (const row of target.rows) {
           update.run(target.episodeKey, row.user_id, row.show_id);

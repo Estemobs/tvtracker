@@ -8,7 +8,7 @@ export function requireAuth(req, res, next) {
 
   try {
     const payload = verifyToken(token);
-    const user = db.prepare('SELECT id, username, email, role, status, avatar, language, discord_webhook_url FROM users WHERE id = ?')
+    const user = db.prepare('SELECT id, username, email, role, status, avatar, language, discord_webhook_url, discord_message_template FROM users WHERE id = ?')
       .get(payload.sub);
     if (!user || user.status !== 'active') {
       return res.status(401).json({ error: 'Session invalide.' });
