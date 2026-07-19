@@ -2,7 +2,16 @@ import * as wikidata from './wikidata.js';
 import { fetchWithRetry, mapWithLimit } from './httpRetry.js';
 
 const HEADERS = { 'User-Agent': 'TVTracker/1.0 (self-hosted watch tracker; no contact url)' };
-const FILM_DESCRIPTION = /^(film|long[\s-]m[ée]trage)\b/i;
+// Anchored at the very start, this used to miss common short-description phrasings like "premier
+// film américain de Kane Parsons (2026)" or "cinquième long-métrage de X" — a leading ordinal/
+// adjective before "film" is normal, not the exception. Missing the real match here doesn't just
+// mean falling through to "not found": since callers take the *first* result satisfying this test
+// out of Wikipedia's (fuzzy, not exact) search results, a real film ranked lower than an unrelated
+// page that happens to say "film" up front — e.g. searching "The Backrooms" wrongly resolving to
+// some other, unrelated new release also literally described as "film ... sorti en 2026" — was
+// picked instead. One optional leading word closes that gap without going so loose it starts
+// matching an actor's own bio ("réalisateur de plusieurs films").
+const FILM_DESCRIPTION = /^(?:\S+\s+){0,1}(film|long[\s-]m[ée]trage)\b/i;
 // Very recent pages often don't have a Wikidata short description yet (description: null),
 // so also accept the "(film)" / "(film, 2026)" disambiguator commonly used in the page title itself.
 const FILM_TITLE_HINT = /\(film(?:,\s*\d{4})?\)$/i;
