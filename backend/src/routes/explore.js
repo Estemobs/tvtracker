@@ -8,6 +8,7 @@ import * as justwatch from '../services/justwatch.js';
 import { enrichMovieWithWikidata } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
 import { log as debugLog } from '../services/debugLog.js';
+import { bulkImportContext } from '../services/httpRetry.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -270,13 +271,25 @@ router.get('/actor/:personId', async (req, res, next) => {
     // name into Wikidata (P161, the same reverse lookup used for movie actors) fills that gap.
     // Best-effort: if the name search finds nothing or finds the wrong person, the TVmaze list
     // alone — already correct, just incomplete — is still shown rather than nothing.
+    //
+    // Wikidata's rate limiter hands out ~20s cooldowns; the *interactive* retry cap (1.2s between
+    // attempts, see httpRetry.js) burns through all 5 attempts in well under that, so on a busy
+    // day this call was failing every single time — not occasionally, reliably — and silently
+    // falling back to the TVmaze-only list, which read as "the movie cross-reference just doesn't
+    // work". Opting into the full backoff here means actually waiting out the cooldown instead of
+    // retrying uselessly into it: slower on a bad day, but it comes back with the real answer
+    // instead of a guaranteed-incomplete one. This is a single on-demand lookup someone is
+    // actively waiting on (the modal already shows "Chargement…"), not a page-load path.
     let fullFilmography = filmography;
     if (!isWikidataId) {
-      const wikidataId = await wikidata.findPersonByName(person.name).catch(() => null);
+      const wikidataId = await bulkImportContext.run(true, () => wikidata.findPersonByName(person.name)).catch(() => null);
       if (wikidataId) {
-        const movieCredits = await wikidata.getPersonFilmography(wikidataId).catch(() => []);
+        const movieCredits = await bulkImportContext.run(true, () => wikidata.getPersonFilmography(wikidataId)).catch(() => []);
         const seen = new Set(filmography.map((f) => f.title.toLowerCase().trim()));
         fullFilmography = [...filmography, ...movieCredits.filter((f) => !seen.has(f.title.toLowerCase().trim()))];
+        debugLog('actor', `${person.name} : +${fullFilmography.length - filmography.length} crédits films via Wikidata (${wikidataId}).`);
+      } else {
+        debugLog('actor', `${person.name} : pas de correspondance Wikidata trouvée, filmographie TVmaze seule (${filmography.length}).`);
       }
     }
 
