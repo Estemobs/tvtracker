@@ -160,20 +160,24 @@ export default function Explore() {
         <PosterGridSkeleton />
       ) : (
         (() => {
-          const rows = [
-            ['Tendances', filterByTab(categories.trending)],
-            ['Les plus suivis sur TVTracker', filterByTab(categories.most_followed)],
-            ['Nouvelles séries', tab === 'all' || tab === 'serie' ? categories.new_series : []],
-            ['Nouveaux films', tab === 'all' || tab === 'movie' ? categories.new_movies : []],
-            ['Séries populaires', tab === 'all' || tab === 'serie' ? categories.series : []],
-            ['Animes populaires', tab === 'all' || tab === 'anime' ? categories.animes : []],
-            ['Films populaires', tab === 'all' || tab === 'movie' ? categories.movies : []],
+          const top10Rows = [
+            ['Top 10 séries', tab === 'all' || tab === 'serie' ? categories.top10_series : []],
+            ['Top 10 animes', tab === 'all' || tab === 'anime' ? categories.top10_animes : []],
+            ['Top 10 films', tab === 'all' || tab === 'movie' ? categories.top10_movies : []],
           ];
-          const hasAny = rows.some(([, items]) => items && items.length);
+          const newRows = [
+            ['Nouveautés séries', tab === 'all' || tab === 'serie' ? categories.new_series : []],
+            ['Nouveautés animes', tab === 'all' || tab === 'anime' ? categories.new_animes : []],
+            ['Nouveautés films', tab === 'all' || tab === 'movie' ? categories.new_movies : []],
+          ];
+          const hasAny = [...top10Rows, ...newRows].some(([, items]) => items && items.length);
           if (!hasAny) return <p className="text-gray-400 text-sm">Aucun résultat.</p>;
           return (
             <div className="space-y-6">
-              {rows.map(([title, items]) => (
+              {top10Rows.map(([title, items]) => (
+                <Top10Row key={title} title={title} items={items} />
+              ))}
+              {newRows.map(([title, items]) => (
                 <CategoryRow key={title} title={title} items={items} />
               ))}
             </div>
