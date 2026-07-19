@@ -91,6 +91,7 @@ export async function findByTitle(title, objectType) {
             content(country: $country, language: $language) {
               fullPath
               runtime
+              originalReleaseDate
               scoring { imdbScore tmdbScore }
             }
             offers(country: $country, platform: WEB) { monetizationType package { clearName } }
@@ -116,6 +117,7 @@ export async function findByTitle(title, objectType) {
     score: score != null ? Math.round(score * 10) / 10 : null,
     url: node.content.fullPath ? `https://www.justwatch.com${node.content.fullPath}` : null,
     runtime: node.content.runtime || null,
+    releaseDate: node.content.originalReleaseDate || null,
   };
 }
 

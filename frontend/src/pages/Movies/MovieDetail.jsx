@@ -5,6 +5,15 @@ import ActorModal from '../../components/ActorModal.jsx';
 import ExpandableText from '../../components/ExpandableText.jsx';
 import { RatingBadge, PlatformRow } from '../../components/JustWatchInfo.jsx';
 
+// `release_date` is either a bare 4-digit year (Wikipedia's crude extraction, see
+// backend/src/services/wikipedia.js's extractYear) or a full YYYY-MM-DD (JustWatch's, more
+// precise when available) — show whichever precision is actually there.
+function formatReleaseDate(releaseDate) {
+  if (!releaseDate) return null;
+  if (releaseDate.length === 4) return releaseDate;
+  return new Date(releaseDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export default function MovieDetail() {
   const { movieId } = useParams();
   const navigate = useNavigate();
@@ -47,8 +56,8 @@ export default function MovieDetail() {
           <div className="text-xs text-gray-400 mt-1 flex flex-wrap items-center gap-x-2">
             <span>{movie.genres.join(', ')}</span>
             <RatingBadge score={movie.jw_score ?? movie.note} url={movie.jw_url} />
+            {movie.release_date && <span>· {formatReleaseDate(movie.release_date)}</span>}
             {movie.duration && <span>· {movie.duration} min</span>}
-            {movie.release_date && <span>· {movie.release_date.slice(0, 4)}</span>}
           </div>
         </div>
       </div>

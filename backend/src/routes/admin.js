@@ -22,24 +22,25 @@ router.post('/debug/toggle', (req, res) => {
 
 // The list page's own background healing (movies.js) only ever fixes 2 movies per visit — fine
 // for an occasional gap, hopeless for someone with a couple hundred movies imported before
-// `duration` was tracked (or added via the Wikipedia source, which never reported one): at that
-// scale it can take dozens of visits to actually catch up, which reads as "still just broken"
-// rather than "still healing". This runs the same repair across every incomplete movie in the
-// catalog (not just one user's list) in one go, still throttled the same way to stay gentle on
-// Wikipedia/Wikidata. Enable debug mode first (above) to watch it progress.
+// `duration`/`release_date` were tracked (or added via the Wikipedia source, which barely reports
+// either): at that scale it can take dozens of visits to actually catch up, which reads as "still
+// just broken" rather than "still healing". This runs the same repair across every incomplete
+// movie in the catalog (not just one user's list) in one go, still throttled the same way to stay
+// gentle on Wikipedia/Wikidata. Enable debug mode first (above) to watch it progress.
 let backfillRunning = false;
+const MISSING_INFO_WHERE = `duration IS NULL OR release_date IS NULL`;
 router.get('/movies/missing-duration-count', (req, res) => {
-  const { count } = db.prepare(`SELECT COUNT(*) as count FROM movies WHERE duration IS NULL`).get();
+  const { count } = db.prepare(`SELECT COUNT(*) as count FROM movies WHERE ${MISSING_INFO_WHERE}`).get();
   res.json({ count, running: backfillRunning });
 });
 
 router.post('/movies/backfill-durations', (req, res) => {
   if (backfillRunning) return res.status(409).json({ error: 'Une réparation est déjà en cours.' });
-  const rows = db.prepare(`SELECT source, source_id FROM movies WHERE duration IS NULL`).all();
+  const rows = db.prepare(`SELECT source, source_id FROM movies WHERE ${MISSING_INFO_WHERE}`).all();
   if (!rows.length) return res.json({ message: 'Aucun film à réparer.', count: 0 });
 
   backfillRunning = true;
-  debugLog('backfill', `Réparation de ${rows.length} films sans durée démarrée.`);
+  debugLog('backfill', `Réparation de ${rows.length} films incomplets démarrée.`);
   mapWithLimit(rows, 2, async (r) => {
     try {
       await cacheMovie(r.source, r.source_id, { posterOnly: true });

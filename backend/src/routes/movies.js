@@ -8,13 +8,13 @@ const router = Router();
 router.use(requireAuth);
 
 // The list itself must stay instant (a bulk re-enrichment on every load was the exact "list
-// takes forever" problem fixed earlier) — but a movie missing its poster or duration here would
-// otherwise only ever heal once someone happens to open its detail page (duration matters even
-// though this list doesn't show it: it's what the profile's total-watch-time stat sums, and a
-// NULL duration — the norm for anything added via the Wikipedia source — silently zeroes that
-// stat). Kick off a background re-fetch for any such row; it'll show up correctly on the next
-// load instead. The in-flight set just avoids piling up duplicate fetches if the list is reloaded
-// again before the first one finishes.
+// takes forever" problem fixed earlier) — but a movie missing its poster, duration or release
+// date here would otherwise only ever heal once someone happens to open its detail page (duration
+// matters even though this list doesn't show it: it's what the profile's total-watch-time stat
+// sums, and a NULL duration — the norm for anything added via the Wikipedia source — silently
+// zeroes that stat). Kick off a background re-fetch for any such row; it'll show up correctly on
+// the next load instead. The in-flight set just avoids piling up duplicate fetches if the list is
+// reloaded again before the first one finishes.
 //
 // Two things this deliberately avoids, both of which turned "open the movie list" into "every
 // other Wikipedia-backed feature on the site stalls for the next 20-30s": posterOnly skips the
@@ -24,7 +24,7 @@ router.use(requireAuth);
 // their rate limiter and jam the shared per-host cooldown for every other request in flight.
 const healingMovies = new Set();
 async function healPostersInBackground(rows) {
-  const toHeal = rows.filter((r) => (!r.poster || !r.duration) && !healingMovies.has(`${r.source}:${r.source_id}`));
+  const toHeal = rows.filter((r) => (!r.poster || !r.duration || !r.release_date) && !healingMovies.has(`${r.source}:${r.source_id}`));
   if (!toHeal.length) return;
   for (const r of toHeal) healingMovies.add(`${r.source}:${r.source_id}`);
   try {

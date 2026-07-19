@@ -122,11 +122,12 @@ export default function Admin() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-400">Films sans durée</h2>
+        <h2 className="text-sm font-semibold text-gray-400">Films incomplets</h2>
         <p className="text-xs text-gray-500">
           Corrige les statistiques de temps de visionnage cassées (ex. "0 h 0 min" alors que des films ont
-          été vus) : les films ajoutés via Wikipedia n'ont pas de durée tant qu'ils n'ont pas été réparés.
-          Répare tout le catalogue en une fois plutôt que d'attendre que ça se fasse tout seul au fil des visites.
+          été vus) et les dates de sortie manquantes : les films ajoutés via Wikipedia n'ont ni durée ni date
+          fiable tant qu'ils n'ont pas été réparés. Répare tout le catalogue en une fois plutôt que d'attendre
+          que ça se fasse tout seul au fil des visites.
         </p>
         <div className="flex items-center gap-3">
           <button
@@ -136,7 +137,7 @@ export default function Admin() {
           >
             {movieBackfill?.running
               ? 'Réparation en cours…'
-              : `Réparer les films sans durée (${movieBackfill?.count ?? '…'})`}
+              : `Réparer les films incomplets (${movieBackfill?.count ?? '…'})`}
           </button>
           {movieBackfill?.running && (
             <span className="text-xs text-gray-500">Active le mode debug ci-dessous pour suivre la progression.</span>

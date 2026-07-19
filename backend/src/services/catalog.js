@@ -125,13 +125,13 @@ export async function enrichMovieWithWikidata(details, { posterOnly = false } = 
 
 export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) {
   let movie = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, String(sourceId));
-  // Treat a movie missing its poster, cast or duration as stale regardless of age: an empty
-  // result more often means a past fetch failed (rate limit, momentary network issue, or — for
-  // duration specifically — a movie added via the Wikipedia source, which never reports one on
-  // its own, see below) than that the source genuinely has nothing, so it's worth retrying on
-  // the next view rather than sitting incomplete forever (a NULL duration would otherwise make
-  // this movie silently drop out of any total-watch-time stat for good).
-  const isIncomplete = movie && (!movie.poster || !movie.backdrop || movie.cast_json === '[]' || !movie.cast_json || !movie.duration);
+  // Treat a movie missing its poster, cast, duration or release date as stale regardless of age:
+  // an empty result more often means a past fetch failed (rate limit, momentary network issue,
+  // or — for duration/release date specifically — a movie added via the Wikipedia source, which
+  // barely reports either on its own, see below) than that the source genuinely has nothing, so
+  // it's worth retrying on the next view rather than sitting incomplete forever (a NULL duration
+  // would otherwise make this movie silently drop out of any total-watch-time stat for good).
+  const isIncomplete = movie && (!movie.poster || !movie.backdrop || movie.cast_json === '[]' || !movie.cast_json || !movie.duration || !movie.release_date);
   const isStale = !movie || isIncomplete || Date.now() - new Date(movie.updated_at + 'Z').getTime() > STALE_MS;
 
   if (isStale) {
@@ -148,6 +148,12 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
     // Wikipedia's own summary never reports a runtime (see getMovieSummary) — JustWatch's does,
     // so it's the only fallback available for anything not sourced from iTunes.
     if (!details.duration && jw?.runtime) details.duration = jw.runtime;
+    // Wikipedia's "release date" is really just the first 4-digit number regex-matched out of the
+    // short description (see extractYear) — good enough as a last resort, but wrong or altogether
+    // missing whenever that description doesn't happen to contain a bare year (older/classic films
+    // in particular, whose description is often just "film américain de X" with no year at all).
+    // JustWatch's actual release date is precise, so it wins whenever it's there.
+    if (jw?.releaseDate) details.release_date = jw.releaseDate;
 
     const upsert = db.prepare(`
       INSERT INTO movies (source, source_id, title, poster, backdrop, synopsis, duration, note, genres, release_date, platform, cast_json, next_installment_json, jw_platforms, jw_score, jw_url, updated_at)
