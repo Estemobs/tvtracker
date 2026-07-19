@@ -3,12 +3,23 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { api } from '../../api/client.js';
 
 const DEFAULT_DISCORD_TEMPLATE = 'Nouvel épisode disponible pour {titre} : {episode}';
+const MENTION_RE = /<@[!&]?\d+>|@everyone|@here/g;
 
 // Mirrors the backend's renderMessageTemplate() in discordNotifications.js, using example data
 // so the user sees exactly what a real notification will look like before saving/testing it.
 function previewDiscordMessage(template) {
   const vars = { titre: 'Ma Série (exemple)', saison: '1', numero: '1', episode: 'S1E1', date: new Date().toISOString().slice(0, 10) };
   return (template || DEFAULT_DISCORD_TEMPLATE).replace(/\{(titre|saison|numero|episode|date)\}/g, (_, key) => vars[key]);
+}
+
+// Mirrors buildPayload()'s split: any mention is pulled out of the embed into the message shown
+// above the card (the only place Discord actually pings for it), the rest stays in the embed.
+function splitDiscordMention(rendered) {
+  const mentions = rendered.match(MENTION_RE);
+  return {
+    content: mentions ? mentions.join(' ') : '',
+    description: rendered.replace(MENTION_RE, '').replace(/[ \t]{2,}/g, ' ').trim(),
+  };
 }
 
 function formatMinutes(min) {
@@ -281,15 +292,21 @@ export default function Profile() {
             Laisse vide pour le message par défaut. Tu peux inclure une mention (ex. {'@everyone'} ou {'<@&idDuRole>'}) : elle notifiera bien les membres du salon.
           </p>
 
-          <div className="space-y-1.5">
-            <p className="text-[11px] uppercase tracking-wide text-gray-500">Aperçu</p>
-            <p className="text-sm font-medium">TVTracker <span className="text-[10px] bg-accent-600/70 rounded px-1 py-0.5 align-middle">BOT</span></p>
-            <p className="text-sm text-gray-200">{previewDiscordMessage(form.discord_message_template)}</p>
-            <div className="bg-[#2b2d31] border-l-4 border-[#5865f2] rounded-r-lg p-3 max-w-md">
-              <p className="text-sm font-semibold text-gray-100">Ma Série (exemple)</p>
-              <p className="text-xs text-gray-500 mt-2">Diffusion prévue le {new Date().toISOString().slice(0, 10)}</p>
-            </div>
-          </div>
+          {(() => {
+            const { content, description } = splitDiscordMention(previewDiscordMessage(form.discord_message_template));
+            return (
+              <div className="space-y-1.5">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">Aperçu</p>
+                <p className="text-sm font-medium">TVTracker <span className="text-[10px] bg-accent-600/70 rounded px-1 py-0.5 align-middle">BOT</span></p>
+                {content && <p className="text-sm text-gray-200">{content}</p>}
+                <div className="bg-[#2b2d31] border-l-4 border-[#5865f2] rounded-r-lg p-3 max-w-md">
+                  <p className="text-sm font-semibold text-gray-100">Ma Série (exemple)</p>
+                  <p className="text-sm text-gray-300 mt-1">{description}</p>
+                  <p className="text-xs text-gray-500 mt-2">Diffusion prévue le {new Date().toISOString().slice(0, 10)}</p>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="flex items-center gap-3">
             <button className="bg-accent-600 hover:bg-accent-500 text-sm rounded-lg px-3 py-2 font-medium">Enregistrer</button>
