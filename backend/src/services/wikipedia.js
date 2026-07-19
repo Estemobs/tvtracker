@@ -134,7 +134,7 @@ export async function searchMovies(query) {
   // resolveMissingPoster) — a search page full of posterless results firing all of those at once
   // is enough of a burst on its own to trip Wikidata's rate limiter (see mapWithLimit in
   // httpRetry.js for why that's worth avoiding).
-  return mapWithLimit(films, 3, async (p) => {
+  return mapWithLimit(films, 2, async (p) => {
     let poster = upscaleThumbnail(p.thumbnail?.url);
     if (!poster) poster = await resolveMissingPoster(p.key).catch(() => null);
     return {

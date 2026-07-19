@@ -5,6 +5,7 @@ export default function Admin() {
   const [pending, setPending] = useState(null);
   const [users, setUsers] = useState(null);
   const [debug, setDebug] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const load = () => {
     api.get('/admin/users/pending').then(setPending);
@@ -28,7 +29,6 @@ export default function Admin() {
     setDebug({ ...data, logs: [] });
   };
 
-  const [copied, setCopied] = useState(false);
   const copyDebugLog = async () => {
     const text = (debug?.logs || [])
       .map((l) => `${new Date(l.at).toLocaleTimeString('fr-FR')} [${l.scope}] ${l.message}`)
@@ -107,14 +107,25 @@ export default function Admin() {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-400">Mode debug</h2>
-          <button
-            onClick={toggleDebug}
-            className={`text-xs rounded-lg px-3 py-1.5 font-medium ${
-              debug?.enabled ? 'bg-red-900/40 text-red-400 border border-base-700' : 'bg-accent-600 hover:bg-accent-500'
-            }`}
-          >
-            {debug?.enabled ? 'Désactiver' : 'Activer'}
-          </button>
+          <div className="flex gap-2">
+            {debug?.enabled && (
+              <button
+                onClick={copyDebugLog}
+                disabled={!debug.logs?.length}
+                className="bg-base-800 hover:bg-base-700 text-xs rounded-lg px-3 py-1.5 font-medium border border-base-700 disabled:opacity-40"
+              >
+                {copied ? 'Copié !' : 'Copier le journal'}
+              </button>
+            )}
+            <button
+              onClick={toggleDebug}
+              className={`text-xs rounded-lg px-3 py-1.5 font-medium ${
+                debug?.enabled ? 'bg-red-900/40 text-red-400 border border-base-700' : 'bg-accent-600 hover:bg-accent-500'
+              }`}
+            >
+              {debug?.enabled ? 'Désactiver' : 'Activer'}
+            </button>
+          </div>
         </div>
         <p className="text-xs text-gray-500">
           Active la journalisation détaillée (chaque appel externe, rafraîchissement des tendances…) pour

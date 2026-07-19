@@ -67,7 +67,7 @@ router.get('/search', async (req, res, next) => {
 // concurrency multiplies into a burst big enough to trip Wikidata's rate limiter — which then
 // stalls *unrelated* Wikipedia-backed features (e.g. someone else's Explorer search) for the
 // duration of the cooldown. Shows don't have that fan-out (TVmaze is a single call per title).
-async function resolveJustWatchItems(jwItems, resolver, { forceType, limit = 10, concurrency = 2 } = {}) {
+async function resolveJustWatchItems(jwItems, resolver, { forceType, limit = 10, concurrency = 1 } = {}) {
   const resolved = await mapWithLimit(jwItems, concurrency, async (jw) => {
     try {
       const matches = await resolver(jw.title);
