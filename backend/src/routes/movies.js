@@ -65,6 +65,18 @@ router.get('/', (req, res) => {
   res.json(rows);
 });
 
+// The automatic healing above only ever fixes 2 movies per list visit, silently — fine for the
+// odd gap, but with enough missing images it just looks like nothing's being done. This gives the
+// user an explicit "repair now" action with a real count back, instead of hoping a background job
+// catches up eventually.
+router.post('/repair-images', (req, res) => {
+  const rows = db.prepare(`SELECT m.source, m.source_id, m.poster, m.duration, m.release_date
+    FROM user_movies um JOIN movies m ON m.id = um.movie_id WHERE um.user_id = ?`).all(req.user.id);
+  const missing = rows.filter((r) => !r.poster || !r.duration || !r.release_date);
+  void healPostersInBackground(rows);
+  res.json({ count: missing.length });
+});
+
 router.post('/', async (req, res, next) => {
   try {
     const { source, source_id } = req.body || {};

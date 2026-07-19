@@ -183,7 +183,9 @@ function JustWatchPoster({ r, pending, failed, onClick }) {
           </span>
         )}
         {pending && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-xs text-gray-200">Ouverture…</div>
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+            <span className="w-5 h-5 border-2 border-gray-500 border-t-accent-500 rounded-full animate-spin" />
+          </div>
         )}
       </div>
       <div className="text-sm font-medium truncate">{r.title}</div>

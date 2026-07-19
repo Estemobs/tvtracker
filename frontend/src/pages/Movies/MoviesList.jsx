@@ -7,14 +7,36 @@ export default function MoviesList() {
   const [movies, setMovies] = useState(null);
   const [filter, setFilter] = useState('to_watch');
   const [sort, setSort] = useState('recent');
+  const [repairing, setRepairing] = useState(false);
+  const [repairMessage, setRepairMessage] = useState(null);
 
-  useEffect(() => {
+  const load = () => {
     const params = new URLSearchParams();
     if (filter !== 'all') params.set('filter', filter);
     params.set('sort', sort);
-    setMovies(null);
     api.get(`/movies?${params}`).then(setMovies).catch(() => setMovies([]));
+  };
+
+  useEffect(() => {
+    setMovies(null);
+    load();
   }, [filter, sort]);
+
+  // The list itself already heals a couple of movies per visit in the background, silently — this
+  // gives an explicit "do it now" action with a real count, and reloads the list a bit later once
+  // the repair (still throttled server-side to stay gentle on Wikipedia/Wikidata) has had time to
+  // land, instead of leaving the user wondering whether anything happened at all.
+  const repairImages = async () => {
+    setRepairing(true);
+    setRepairMessage(null);
+    try {
+      const { count } = await api.post('/movies/repair-images');
+      setRepairMessage(count === 0 ? 'Rien à réparer, tout est déjà complet.' : `Réparation de ${count} film${count > 1 ? 's' : ''} lancée…`);
+      if (count > 0) setTimeout(load, 6000);
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   const toggle = async (movie) => {
     const newStatus = movie.status === 'watched' ? 'to_watch' : 'watched';
@@ -55,7 +77,16 @@ export default function MoviesList() {
           <option value="alpha">Titre</option>
           <option value="note">Note</option>
         </select>
+        <button
+          onClick={repairImages}
+          disabled={repairing}
+          className="bg-base-800 hover:bg-base-700 border border-base-600 text-xs rounded-lg px-3 py-1.5 font-medium text-gray-300 disabled:opacity-40"
+        >
+          {repairing ? 'Réparation…' : 'Réparer les images'}
+        </button>
       </div>
+
+      {repairMessage && <p className="text-xs text-gray-400">{repairMessage}</p>}
 
       {movies === null ? (
         <PosterGridSkeleton />

@@ -84,7 +84,9 @@ export default function ActorModal({ personId, onClose }) {
                             <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500 p-1 text-center">{f.title}</div>
                           )}
                           {pending && (
-                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] text-gray-200">…</div>
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                              <span className="w-4 h-4 border-2 border-gray-500 border-t-accent-500 rounded-full animate-spin" />
+                            </div>
                           )}
                         </div>
                         <div className="text-[11px] truncate">{f.title}</div>
