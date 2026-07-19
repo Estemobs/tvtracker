@@ -100,6 +100,11 @@ const resolveMovie = (title) => wikipedia.searchMoviesAnyLanguage(title);
 // per-user: annotateAdded, the only per-user part, is applied fresh on every request below).
 let trendingCache = { data: null, expiresAt: 0 };
 const TRENDING_CACHE_MS = 60 * 60 * 1000;
+// Several requests can land while the cache is cold (e.g. two users opening Explorer around the
+// same time right after a restart) — without this, each would kick off its own full JustWatch +
+// title-search refresh in parallel, multiplying the exact rate-limit pressure the concurrency cap
+// above is trying to avoid. Sharing the in-flight promise means only the first request pays for it.
+let trendingRefresh = null;
 
 async function buildTrendingCategories() {
   const [jwSeries, jwAnimes, jwMovies, jwNewSeries, jwNewAnimes, jwNewMovies] = await Promise.all([
@@ -126,10 +131,13 @@ async function buildTrendingCategories() {
 router.get('/trending', async (req, res, next) => {
   try {
     if (!trendingCache.data || Date.now() > trendingCache.expiresAt) {
-      try {
+      if (!trendingRefresh) {
         // Nobody is waiting on a spinner for this (it's cached for an hour) — opt into the full
         // rate-limit backoff instead of the short interactive cap, same as the TV Time import.
-        trendingCache = { data: await bulkImportContext.run(true, buildTrendingCategories), expiresAt: Date.now() + TRENDING_CACHE_MS };
+        trendingRefresh = bulkImportContext.run(true, buildTrendingCategories).finally(() => { trendingRefresh = null; });
+      }
+      try {
+        trendingCache = { data: await trendingRefresh, expiresAt: Date.now() + TRENDING_CACHE_MS };
       } catch (error) {
         // JustWatch is an unofficial, undocumented API — if it's down or its schema shifted,
         // fall back to serving the last good ranking rather than a broken Explorer page.
