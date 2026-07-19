@@ -69,5 +69,5 @@ async function fetchTitles(root, { objectType, genres, excludeGenres, production
 // `first` is padded well above 10: some titles won't resolve to this app's own catalog (fuzzy
 // title-search miss) or get filtered out (e.g. a Western cartoon slipping into the anime genre
 // filter) — callers trim the resolved, filtered result down to 10 themselves.
-export const getPopular = (objectType, opts = {}) => fetchTitles('popularTitles', { objectType, first: 20, ...opts });
-export const getNew = (objectType, opts = {}) => fetchTitles('newTitles', { objectType, first: 20, ...opts });
+export const getPopular = (objectType, opts = {}) => fetchTitles('popularTitles', { objectType, first: 30, ...opts });
+export const getNew = (objectType, opts = {}) => fetchTitles('newTitles', { objectType, first: 30, ...opts });
