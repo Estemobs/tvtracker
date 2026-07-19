@@ -52,56 +52,79 @@ router.get('/search', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Ranks locally-tracked shows/movies by how many of this app's own users follow them — the one
-// "most watched" signal we can offer honestly, since none of our keyless sources (TVmaze,
-// iTunes, Wikipedia) expose real viewership data.
-function mostFollowedContent() {
-  const showRows = db.prepare(`
-    SELECT s.source, s.source_id, s.type, s.title, s.poster, s.note, s.nb_seasons, COUNT(us.user_id) AS followers
-    FROM shows s JOIN user_shows us ON us.show_id = s.id
-    GROUP BY s.id
-    ORDER BY followers DESC
-    LIMIT 20
-  `).all().map((r) => ({
-    source: r.source, source_id: r.source_id, media_type: 'tv', type: r.type,
-    title: r.title, poster: r.poster, year: null, note: r.note, nb_seasons: r.nb_seasons, followers: r.followers,
+// JustWatch only knows titles, not this app's TVmaze/Wikipedia ids — a JustWatch ranking is
+// resolved back into our own catalog via the same title search already used by /search, so the
+// result links, posters and "already_added" flag all behave exactly like everywhere else in the
+// app. `wantType`, when given, drops anything that doesn't match TVmaze's own genre-based
+// series/anime split (see isAnime in tvmaze.js) — JustWatch's "Animation" genre also catches
+// Western cartoons, so this is what keeps e.g. a Pixar film out of the anime Top 10.
+async function resolveJustWatchItems(jwItems, resolver, { wantType, limit = 10 } = {}) {
+  const resolved = await Promise.all(jwItems.map(async (jw) => {
+    try {
+      const matches = await resolver(jw.title);
+      const match = matches[0];
+      if (!match) return null;
+      if (wantType && match.type !== wantType) return null;
+      return { ...match, jw_rank: jw.rank, platforms: jw.platforms };
+    } catch {
+      return null;
+    }
   }));
-  const movieRows = db.prepare(`
-    SELECT m.source, m.source_id, m.title, m.poster, m.release_date, COUNT(um.user_id) AS followers
-    FROM movies m JOIN user_movies um ON um.movie_id = m.id
-    GROUP BY m.id
-    ORDER BY followers DESC
-    LIMIT 20
-  `).all().map((r) => ({
-    source: r.source, source_id: r.source_id, media_type: 'movie', type: 'movie',
-    title: r.title, poster: r.poster, year: (r.release_date || '').slice(0, 4), note: null, followers: r.followers,
-  }));
-  return [...showRows, ...movieRows].sort((a, b) => b.followers - a.followers).slice(0, 20);
+  return dedupe(resolved.filter(Boolean)).slice(0, limit);
+}
+
+const resolveShow = (title) => tvmaze.searchShows(title);
+const resolveMovie = (title) => wikipedia.searchMoviesAnyLanguage(title);
+
+// A full trending refresh fans out to JustWatch plus ~5 title searches per category against
+// TVmaze/Wikipedia — too slow and too heavy on those hosts to redo on every Explorer page view,
+// and the ranking itself doesn't meaningfully change minute to minute. Cached process-wide (not
+// per-user: annotateAdded, the only per-user part, is applied fresh on every request below).
+let trendingCache = { data: null, expiresAt: 0 };
+const TRENDING_CACHE_MS = 60 * 60 * 1000;
+
+async function buildTrendingCategories() {
+  const [jwSeries, jwAnimes, jwMovies, jwNewSeries, jwNewAnimes, jwNewMovies] = await Promise.all([
+    justwatch.getPopular('SHOW', { excludeGenres: ['ani'] }),
+    justwatch.getPopular('SHOW', { genres: ['ani'], productionCountries: ['JP'] }),
+    justwatch.getPopular('MOVIE'),
+    justwatch.getNew('SHOW', { excludeGenres: ['ani'] }),
+    justwatch.getNew('SHOW', { genres: ['ani'], productionCountries: ['JP'] }),
+    justwatch.getNew('MOVIE'),
+  ]);
+
+  const [top10Series, top10Animes, top10Movies, newSeries, newAnimes, newMovies] = await Promise.all([
+    resolveJustWatchItems(jwSeries, resolveShow, { wantType: 'serie' }),
+    resolveJustWatchItems(jwAnimes, resolveShow, { wantType: 'anime' }),
+    resolveJustWatchItems(jwMovies, resolveMovie),
+    resolveJustWatchItems(jwNewSeries, resolveShow, { wantType: 'serie' }),
+    resolveJustWatchItems(jwNewAnimes, resolveShow, { wantType: 'anime' }),
+    resolveJustWatchItems(jwNewMovies, resolveMovie),
+  ]);
+
+  return { top10Series, top10Animes, top10Movies, newSeries, newAnimes, newMovies };
 }
 
 router.get('/trending', async (req, res, next) => {
   try {
-    const currentYear = new Date().getFullYear();
-    const [shows, movies] = await Promise.all([
-      tvmaze.scheduleHighlights().catch(() => []),
-      itunes.topMovies().catch(() => []),
-    ]);
-
-    const series = dedupe(shows.filter((s) => s.type === 'serie'));
-    const animes = dedupe(shows.filter((s) => s.type === 'anime'));
-    const uniqueMovies = dedupe(movies);
-    const newSeries = series.filter((s) => s.year && Number(s.year) >= currentYear - 1);
-    const newMovies = uniqueMovies.filter((m) => m.year && Number(m.year) >= currentYear - 1);
-    const mostFollowed = dedupe(mostFollowedContent());
-
+    if (!trendingCache.data || Date.now() > trendingCache.expiresAt) {
+      try {
+        trendingCache = { data: await buildTrendingCategories(), expiresAt: Date.now() + TRENDING_CACHE_MS };
+      } catch (error) {
+        // JustWatch is an unofficial, undocumented API — if it's down or its schema shifted,
+        // fall back to serving the last good ranking rather than a broken Explorer page.
+        if (!trendingCache.data) throw error;
+        console.error('[trending] refresh failed, serving stale cache:', error);
+      }
+    }
+    const c = trendingCache.data;
     res.json({
-      trending: annotateAdded(req, dedupe([...shows, ...movies])),
-      series: annotateAdded(req, series),
-      animes: annotateAdded(req, animes),
-      movies: annotateAdded(req, uniqueMovies),
-      new_series: annotateAdded(req, newSeries),
-      new_movies: annotateAdded(req, newMovies),
-      most_followed: annotateAdded(req, mostFollowed),
+      top10_series: annotateAdded(req, c.top10Series),
+      top10_animes: annotateAdded(req, c.top10Animes),
+      top10_movies: annotateAdded(req, c.top10Movies),
+      new_series: annotateAdded(req, c.newSeries),
+      new_animes: annotateAdded(req, c.newAnimes),
+      new_movies: annotateAdded(req, c.newMovies),
     });
   } catch (e) { next(e); }
 });
