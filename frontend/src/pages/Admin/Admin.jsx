@@ -28,6 +28,16 @@ export default function Admin() {
     setDebug({ ...data, logs: [] });
   };
 
+  const [copied, setCopied] = useState(false);
+  const copyDebugLog = async () => {
+    const text = (debug?.logs || [])
+      .map((l) => `${new Date(l.at).toLocaleTimeString('fr-FR')} [${l.scope}] ${l.message}`)
+      .join('\n');
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const approve = async (id) => { await api.post(`/admin/users/${id}/approve`); load(); };
   const refuse = async (id) => { await api.post(`/admin/users/${id}/refuse`); load(); };
   const disable = async (id) => { await api.post(`/admin/users/${id}/disable`); load(); };

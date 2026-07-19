@@ -1,5 +1,5 @@
 import * as wikidata from './wikidata.js';
-import { fetchWithRetry } from './httpRetry.js';
+import { fetchWithRetry, mapWithLimit } from './httpRetry.js';
 
 const HEADERS = { 'User-Agent': 'TVTracker/1.0 (self-hosted watch tracker; no contact url)' };
 const FILM_DESCRIPTION = /^(film|long[\s-]m[ée]trage)\b/i;
@@ -130,7 +130,11 @@ async function resolveMissingPoster(key) {
 export async function searchMovies(query) {
   const pages = await searchPages('https://fr.wikipedia.org', query);
   const films = pages.filter(looksLikeFilm);
-  return Promise.all(films.map(async (p) => {
+  // Each missing-poster fallback is itself 2-3 sequential Wikidata/Wikipedia calls (see
+  // resolveMissingPoster) — a search page full of posterless results firing all of those at once
+  // is enough of a burst on its own to trip Wikidata's rate limiter (see mapWithLimit in
+  // httpRetry.js for why that's worth avoiding).
+  return mapWithLimit(films, 3, async (p) => {
     let poster = upscaleThumbnail(p.thumbnail?.url);
     if (!poster) poster = await resolveMissingPoster(p.key).catch(() => null);
     return {
@@ -143,7 +147,7 @@ export async function searchMovies(query) {
       year: extractYear(p.description, p.title),
       note: null,
     };
-  }));
+  });
 }
 
 export async function getMovieSummary(sourceId) {

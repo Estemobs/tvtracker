@@ -28,6 +28,24 @@ function hostnameOf(url) {
   try { return new URL(url).hostname; } catch { return 'unknown'; }
 }
 
+// A plain Promise.all(items.map(fn)) fires every call at once — fine for a handful of requests,
+// but for anything that can fan out to a couple dozen (e.g. resolving a poster for every search
+// result missing one) that's enough of a burst to trip a host's own rate limiter outright, which
+// then — via the circuit breaker above — stalls every *other* unrelated request to that host too.
+// Capping how many run at a time keeps a single caller from ever generating that burst.
+export async function mapWithLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 async function waitForCooldown(hostname) {
   const state = hostState.get(hostname);
   if (!state) return;

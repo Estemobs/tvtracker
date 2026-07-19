@@ -7,7 +7,7 @@ import * as wikidata from '../services/wikidata.js';
 import * as justwatch from '../services/justwatch.js';
 import { enrichMovieWithWikidata } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
-import { bulkImportContext } from '../services/httpRetry.js';
+import { bulkImportContext, mapWithLimit } from '../services/httpRetry.js';
 import { log as debugLog } from '../services/debugLog.js';
 
 const router = Router();
@@ -54,23 +54,6 @@ router.get('/search', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Resolving a whole batch of JustWatch titles via Promise.all fires them at Wikipedia/TVmaze all
-// at once — Wikipedia's rate limiter trips on that burst, and httpRetry's per-host circuit breaker
-// then makes every other in-flight search in the same batch fail too (see httpRetry.js), not just
-// the one that got rate-limited. A small concurrency cap avoids ever triggering it in the first place.
-async function mapWithLimit(items, limit, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-}
-
 // JustWatch only knows titles, not this app's TVmaze/Wikipedia ids — a JustWatch ranking is
 // resolved back into our own catalog via the same title search already used by /search, so the
 // result links, posters and "already_added" flag all behave exactly like everywhere else in the
@@ -78,8 +61,14 @@ async function mapWithLimit(items, limit, fn) {
 // genre tag: TVmaze's "Anime" genre is inconsistently applied (e.g. it's missing on One Piece
 // itself), so for the anime category the classification already done upstream — JustWatch's
 // "Animation" genre restricted to Japanese productions — is the more reliable signal.
-async function resolveJustWatchItems(jwItems, resolver, { forceType, limit = 10 } = {}) {
-  const resolved = await mapWithLimit(jwItems, 4, async (jw) => {
+//
+// `concurrency` defaults low: a single movie title search can itself fan out to several Wikidata
+// calls (missing-poster fallback, see wikipedia.js), so resolving titles here at any real
+// concurrency multiplies into a burst big enough to trip Wikidata's rate limiter — which then
+// stalls *unrelated* Wikipedia-backed features (e.g. someone else's Explorer search) for the
+// duration of the cooldown. Shows don't have that fan-out (TVmaze is a single call per title).
+async function resolveJustWatchItems(jwItems, resolver, { forceType, limit = 10, concurrency = 2 } = {}) {
+  const resolved = await mapWithLimit(jwItems, concurrency, async (jw) => {
     try {
       const matches = await resolver(jw.title);
       const match = matches[0];
@@ -129,11 +118,11 @@ async function buildTrendingCategories() {
   ]);
 
   const [top10Series, top10Animes, top10Movies, newSeries, newAnimes, newMovies] = await Promise.all([
-    resolveJustWatchItems(jwSeries, resolveShow, { forceType: 'serie' }),
-    resolveJustWatchItems(jwAnimes, resolveShow, { forceType: 'anime' }),
+    resolveJustWatchItems(jwSeries, resolveShow, { forceType: 'serie', concurrency: 4 }),
+    resolveJustWatchItems(jwAnimes, resolveShow, { forceType: 'anime', concurrency: 4 }),
     resolveJustWatchItems(jwMovies, resolveMovie),
-    resolveJustWatchItems(jwNewSeries, resolveShow, { forceType: 'serie' }),
-    resolveJustWatchItems(jwNewAnimes, resolveShow, { forceType: 'anime' }),
+    resolveJustWatchItems(jwNewSeries, resolveShow, { forceType: 'serie', concurrency: 4 }),
+    resolveJustWatchItems(jwNewAnimes, resolveShow, { forceType: 'anime', concurrency: 4 }),
     resolveJustWatchItems(jwNewMovies, resolveMovie),
   ]);
 
