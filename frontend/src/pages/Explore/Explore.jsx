@@ -70,7 +70,7 @@ function useResolveAndOpen() {
 
 function JustWatchPoster({ r, pending, failed, onClick }) {
   return (
-    <button onClick={onClick} className="group flex flex-col gap-2 w-32 sm:w-36 flex-shrink-0 text-left">
+    <button onClick={onClick} className="group flex flex-col gap-2 w-full text-left">
       <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
         {r.poster ? (
           <img src={r.poster} alt={r.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
@@ -97,23 +97,47 @@ function JustWatchPoster({ r, pending, failed, onClick }) {
   );
 }
 
+// Genre browsing grid: same click-to-resolve items as JustWatchRow, but wrapped into a grid
+// instead of a horizontal row (for a whole genre's worth of results, not just a Top10).
+function JustWatchGrid({ items }) {
+  const { open, pendingKey, failedKey } = useResolveAndOpen();
+  if (!items.length) return <p className="text-gray-400 text-sm">Aucun résultat pour ce genre.</p>;
+  return (
+    <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      {items.map((r) => {
+        const key = `${r.media_type}-${r.title}`;
+        return (
+          <JustWatchPoster
+            key={key}
+            r={r}
+            pending={pendingKey === key}
+            failed={failedKey === key}
+            onClick={() => open(r)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function JustWatchRow({ title, items }) {
   const { open, pendingKey, failedKey } = useResolveAndOpen();
   if (!items || !items.length) return null;
   return (
     <section>
       <h2 className="text-sm font-semibold text-gray-400 mb-3">{title}</h2>
-      <div className="flex gap-4 overflow-x-auto pb-2">
+      <div className="flex gap-4 overflow-x-auto pb-2 pr-4 sm:pr-6">
         {items.map((r) => {
           const key = `${r.media_type}-${r.title}`;
           return (
-            <JustWatchPoster
-              key={key}
-              r={r}
-              pending={pendingKey === key}
-              failed={failedKey === key}
-              onClick={() => open(r)}
-            />
+            <div key={key} className="w-32 sm:w-36 flex-shrink-0">
+              <JustWatchPoster
+                r={r}
+                pending={pendingKey === key}
+                failed={failedKey === key}
+                onClick={() => open(r)}
+              />
+            </div>
           );
         })}
       </div>
@@ -121,11 +145,18 @@ function JustWatchRow({ title, items }) {
   );
 }
 
+// Genre browsing (like Netflix's "Action", "Comédie"…) only makes sense once a media type is
+// picked — series/anime genres (TVmaze) and movie genres (JustWatch) are different vocabularies.
+const GENRE_MEDIA_TYPE = { serie: 'tv', anime: 'tv', movie: 'movie' };
+
 export default function Explore() {
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [categories, setCategories] = useState(null);
+  const [genres, setGenres] = useState(null);
+  const [selectedGenre, setSelectedGenre] = useState(null);
+  const [genreResults, setGenreResults] = useState(null);
 
   useEffect(() => {
     api.get('/explore/trending').then(setCategories).catch(() => setCategories({}));
@@ -138,6 +169,22 @@ export default function Explore() {
     }, 350);
     return () => clearTimeout(handle);
   }, [query]);
+
+  const genreMediaType = GENRE_MEDIA_TYPE[tab];
+
+  useEffect(() => {
+    setSelectedGenre(null);
+    setGenreResults(null);
+    if (!genreMediaType) { setGenres(null); return; }
+    api.get(`/explore/genres/${genreMediaType}`).then(setGenres);
+  }, [genreMediaType]);
+
+  useEffect(() => {
+    if (!selectedGenre) { setGenreResults(null); return; }
+    setGenreResults(null);
+    api.get(`/explore/discover/${genreMediaType}?genre=${encodeURIComponent(selectedGenre)}`)
+      .then((data) => setGenreResults(data.results));
+  }, [selectedGenre, genreMediaType]);
 
   const filterByTab = (list) => {
     if (!list) return list;
@@ -173,10 +220,38 @@ export default function Explore() {
         ))}
       </div>
 
+      {!query.trim() && genres && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {genres.map((g) => (
+            <button
+              key={g.value}
+              onClick={() => setSelectedGenre(selectedGenre === g.value ? null : g.value)}
+              className={`shrink-0 text-xs rounded-full px-3 py-1.5 font-medium border ${
+                selectedGenre === g.value
+                  ? 'bg-accent-600 border-accent-600 text-white'
+                  : 'bg-base-800 border-base-700 text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {query.trim() ? (
         <section>
           <h2 className="text-sm font-semibold text-gray-400 mb-3">Résultats</h2>
           {results === null ? <PosterGridSkeleton /> : <ResultGrid results={filterByTab(results)} />}
+        </section>
+      ) : selectedGenre ? (
+        <section>
+          {genreResults === null ? (
+            <PosterGridSkeleton />
+          ) : genreMediaType === 'movie' ? (
+            <JustWatchGrid items={genreResults} />
+          ) : (
+            <ResultGrid results={filterByTab(genreResults)} />
+          )}
         </section>
       ) : categories === null ? (
         <PosterGridSkeleton />

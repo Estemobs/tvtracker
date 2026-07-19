@@ -61,9 +61,8 @@ router.get('/search', async (req, res, next) => {
 // posterUrl in justwatch.js) and platforms — enough to render the page with zero TVmaze/Wikipedia
 // calls. Resolving a title to this app's catalog now only happens for the *one* title someone
 // actually clicks, via GET /explore/resolve below.
-function formatJustWatchItems(jwItems, { mediaType, type }) {
-  return jwItems.slice(0, 10).map((jw) => ({
-    jw_title: jw.title,
+function formatJustWatchItems(jwItems, { mediaType, type, limit = 10 }) {
+  return jwItems.slice(0, limit).map((jw) => ({
     media_type: mediaType,
     type,
     title: jw.title,
@@ -202,15 +201,19 @@ router.get('/discover/:mediaType', async (req, res, next) => {
       const results = await tvmaze.discoverByGenre(genre);
       return res.json({ results: annotateAdded(req, results) });
     }
-    const movies = await itunes.topMovies();
-    const filtered = genre ? movies.filter((m) => m.genre === genre) : movies;
-    res.json({ results: annotateAdded(req, filtered) });
+    // Movies used to filter iTunes's ~40-title top chart by genre — a pool that small rarely had
+    // more than a couple of matches for any given genre. JustWatch's own genre filter (already
+    // used for the Top10/Nouveautés movie rows) draws from its whole catalog instead, so browsing
+    // a genre actually returns a genre's worth of results. Same deal as Top10: shown as-is from
+    // JustWatch, resolved into this app's catalog only when a title is actually clicked.
+    const jwMovies = await justwatch.getPopular('MOVIE', { first: 24, ...(genre ? { genres: [genre] } : {}) });
+    res.json({ results: formatJustWatchItems(jwMovies, { mediaType: 'movie', type: 'movie', limit: 24 }) });
   } catch (e) { next(e); }
 });
 
 router.get('/genres/:mediaType', (req, res) => {
-  if (req.params.mediaType === 'tv') return res.json(tvmaze.GENRES);
-  res.json(['Action & Adventure', 'Comedy', 'Drama', 'Horror', 'Romance', 'Science-Fiction', 'Thriller', 'Animation']);
+  if (req.params.mediaType === 'tv') return res.json(tvmaze.GENRES.map((g) => ({ value: g, label: g })));
+  res.json(justwatch.MOVIE_GENRES);
 });
 
 router.get('/tv/:sourceId', async (req, res, next) => {

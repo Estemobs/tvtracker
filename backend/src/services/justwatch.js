@@ -72,3 +72,20 @@ async function fetchTitles(root, { objectType, genres, excludeGenres, production
 // resolve-and-filter step used to need to still end up with 10 after some inevitably failed.
 export const getPopular = (objectType, opts = {}) => fetchTitles('popularTitles', { objectType, first: 12, ...opts });
 export const getNew = (objectType, opts = {}) => fetchTitles('newTitles', { objectType, first: 12, ...opts });
+
+// JustWatch's own genre vocabulary (shortName codes), used for movie genre browsing — a curated
+// subset in the order/grouping that reads naturally as a genre picker, translated to French.
+export const MOVIE_GENRES = [
+  { value: 'act', label: 'Action & Aventure' },
+  { value: 'cmy', label: 'Comédie' },
+  { value: 'drm', label: 'Drame' },
+  { value: 'hrr', label: 'Horreur' },
+  { value: 'rma', label: 'Comédie romantique' },
+  { value: 'scf', label: 'Science-Fiction' },
+  { value: 'trl', label: 'Mystère & Thriller' },
+  { value: 'fnt', label: 'Fantastique' },
+  { value: 'ani', label: 'Animation' },
+  { value: 'crm', label: 'Crime' },
+  { value: 'war', label: 'Guerre' },
+  { value: 'doc', label: 'Documentaire' },
+];
