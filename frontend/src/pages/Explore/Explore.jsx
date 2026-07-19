@@ -1,7 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { PosterGridSkeleton } from '../../components/Skeleton.jsx';
+
+// Lets the mouse wheel scroll a horizontal row directly (like a streaming platform's shelf) —
+// without this, hovering a row and scrolling just scrolls the whole page vertically, and reaching
+// the row's own horizontal scrollbar (now hidden, see .scroll-row in index.css) isn't an option.
+function useWheelToHorizontalScroll() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+  return ref;
+}
 
 function Poster({ r }) {
   return (
@@ -122,11 +141,12 @@ function JustWatchGrid({ items }) {
 
 function JustWatchRow({ title, items }) {
   const { open, pendingKey, failedKey } = useResolveAndOpen();
+  const scrollRef = useWheelToHorizontalScroll();
   if (!items || !items.length) return null;
   return (
     <section>
       <h2 className="text-sm font-semibold text-gray-400 mb-3">{title}</h2>
-      <div className="flex gap-4 overflow-x-auto pb-2 pr-4 sm:pr-6">
+      <div ref={scrollRef} className="scroll-row flex gap-4 overflow-x-auto pr-4 sm:pr-6">
         {items.map((r) => {
           const key = `${r.media_type}-${r.title}`;
           return (
@@ -157,6 +177,7 @@ export default function Explore() {
   const [genres, setGenres] = useState(null);
   const [selectedGenre, setSelectedGenre] = useState(null);
   const [genreResults, setGenreResults] = useState(null);
+  const genreScrollRef = useWheelToHorizontalScroll();
 
   useEffect(() => {
     api.get('/explore/trending').then(setCategories).catch(() => setCategories({}));
@@ -221,7 +242,7 @@ export default function Explore() {
       </div>
 
       {!query.trim() && genres && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div ref={genreScrollRef} className="scroll-row flex gap-2 overflow-x-auto">
           {genres.map((g) => (
             <button
               key={g.value}

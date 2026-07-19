@@ -14,3 +14,14 @@ html, body, #root {
   background: theme('colors.base.600');
   border-radius: 4px;
 }
+
+/* Horizontal "shelf" rows (Top10, Nouveautés…) — no visible scrollbar, smooth scroll, like a
+   streaming platform's row: you scrub the mouse wheel over it instead of hunting for a scrollbar. */
+.scroll-row {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
+}
+.scroll-row::-webkit-scrollbar {
+  display: none;
+}
