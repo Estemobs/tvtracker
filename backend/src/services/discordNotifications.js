@@ -58,18 +58,22 @@ export function buildPayload(showTitle, nextEpisode, poster, messageTemplate) {
     episode: episodeLabel,
     date: nextEpisode.air_date,
   };
-  const content = renderMessageTemplate(messageTemplate || DEFAULT_MESSAGE_TEMPLATE, vars);
+  const rendered = renderMessageTemplate(messageTemplate || DEFAULT_MESSAGE_TEMPLATE, vars);
 
-  // The message goes in top-level `content`, not the embed: Discord only pings/notifies for
-  // mentions (roles, users, @everyone) placed in `content` — a mention inside an embed's title,
-  // description or fields is rendered but silent, so a user putting a role mention in their
-  // template would never actually get notified.
+  // Discord only pings/notifies for mentions (roles, users, @everyone) placed in the top-level
+  // `content` — a mention inside an embed's title/description is rendered but silent. So only the
+  // mention(s), if any, are pulled out into `content`; the rest of the message stays in the embed.
+  const mentions = rendered.match(MENTION_RE);
+  const content = mentions ? mentions.join(' ') : undefined;
+  const description = rendered.replace(MENTION_RE, '').replace(/[ \t]{2,}/g, ' ').trim();
+
   const payload = {
     username: 'TVTracker',
-    content,
+    ...(content ? { content } : {}),
     embeds: [
       {
         title: showTitle,
+        description,
         color: 0x5865f2,
         footer: { text: `Diffusion prévue le ${nextEpisode.air_date}` },
       },
