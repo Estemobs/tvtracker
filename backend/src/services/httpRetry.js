@@ -95,18 +95,31 @@ export async function fetchWithRetry(url, options = {}, retries = 4) {
         return resp;
       }
       lastResp = resp;
-      if (resp.status === 429) registerRateLimit(hostname);
       debugLog('http', `${options.method || 'GET'} ${url} -> ${resp.status} (essai ${attempt + 1}/${retries + 1})`);
       if (attempt < retries) {
-        // Wikimedia sometimes asks for a very long Retry-After (a minute+) after a burst of
-        // requests — honoring that literally would make a single item block the whole import
-        // for minutes. Cap it: better to fail this one item fast and let the "incomplete
-        // cache" retry logic pick it up again later than to stall everything else behind it.
-        const retryAfter = Number(resp.headers.get('retry-after'));
-        const delay = Number.isFinite(retryAfter) && retryAfter > 0
-          ? Math.min(retryAfter * 1000, MAX_RETRY_DELAY_MS)
-          : 500 * 2 ** attempt;
-        await new Promise((r) => setTimeout(r, delay));
+        if (resp.status === 429) {
+          // This used to wait a fixed, short, independently-guessed delay (capped at
+          // MAX_RETRY_DELAY_MS) between attempts — completely disconnected from the circuit
+          // breaker's own cooldown timestamp below. On a host that hands out ~20s cooldowns, that
+          // meant retrying every 1-3s straight into a wall that hadn't cleared yet, burning
+          // through all 5 attempts in ~10-15s and giving up right as the real cooldown was about
+          // to end. Waiting on the *same* cooldown the circuit breaker just registered — not a
+          // separate guess — means a retry only happens once there's an actual chance it lands.
+          registerRateLimit(hostname);
+          await waitForCooldown(hostname);
+        } else {
+          // Wikimedia sometimes asks for a very long Retry-After (a minute+) after a burst of
+          // requests — honoring that literally would make a single item block the whole import
+          // for minutes. Cap it: better to fail this one item fast and let the "incomplete
+          // cache" retry logic pick it up again later than to stall everything else behind it.
+          const retryAfter = Number(resp.headers.get('retry-after'));
+          const delay = Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, MAX_RETRY_DELAY_MS)
+            : 500 * 2 ** attempt;
+          await new Promise((r) => setTimeout(r, delay));
+        }
+      } else if (resp.status === 429) {
+        registerRateLimit(hostname);
       }
     } catch (e) {
       clearTimeout(timer);
