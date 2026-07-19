@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
+import { LoadingProgress, useElapsedSeconds } from './LoadingProgress.jsx';
 
 export default function ActorModal({ personId, onClose }) {
   const [actor, setActor] = useState(null);
   const [pendingTitle, setPendingTitle] = useState(null);
   const [failedTitle, setFailedTitle] = useState(null);
   const navigate = useNavigate();
+  const loadingSeconds = useElapsedSeconds(!actor);
 
   useEffect(() => {
     setActor(null);
@@ -41,7 +43,7 @@ export default function ActorModal({ personId, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         {!actor ? (
-          <p className="text-gray-400 text-sm p-6">Chargement…</p>
+          <LoadingProgress seconds={loadingSeconds} className="p-6" />
         ) : (
           <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">

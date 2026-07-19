@@ -4,6 +4,7 @@ import { api } from '../../api/client.js';
 import ActorModal from '../../components/ActorModal.jsx';
 import ExpandableText from '../../components/ExpandableText.jsx';
 import { RatingBadge, PlatformRow } from '../../components/JustWatchInfo.jsx';
+import { LoadingProgress, useElapsedSeconds } from '../../components/LoadingProgress.jsx';
 
 const DAYS_FR = {
   Monday: 'Lun.', Tuesday: 'Mar.', Wednesday: 'Mer.', Thursday: 'Jeu.',

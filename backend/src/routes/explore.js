@@ -287,40 +287,102 @@ async function getMovieFilmography(wikidataId) {
   return films;
 }
 
+// Building a full actor page (TVmaze + a Wikidata name search + AlloCiné + a Wikipedia bio
+// search) is the single heaviest chain of external calls in the app — the debug log's own
+// evidence is that on a bad Wikidata/Wikipedia day it can take the better part of a minute, all
+// spent every single time the modal opens, even for the same actor twice in five minutes. A
+// filmography doesn't change minute to minute, so it's cached in the DB like everything else
+// (shows, movies) rather than re-fetched live on every open — this is the actual fix for "it
+// doesn't even load anymore": once it has loaded once, it stays fast for a week regardless of
+// how the upstream sources are behaving that day.
+const PEOPLE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function fetchActorLive(personId) {
+  const isWikidataId = /^Q\d+$/.test(personId);
+
+  let person, filmography;
+  if (isWikidataId) {
+    [person, filmography] = await Promise.all([wikidata.getPerson(personId), getMovieFilmography(personId)]);
+  } else {
+    [person, filmography] = await Promise.all([tvmaze.getPerson(personId), tvmaze.getPersonFilmography(personId)]);
+  }
+
+  if (!person) return null;
+
+  // TVmaze is a TV-only database — its castcredits never include an actor's films, so a TVmaze-
+  // sourced actor's filmography here is always missing that whole side. Cross-referencing by
+  // name into Wikidata finds the person's Wikidata id, which unlocks the AlloCiné/Wikidata movie
+  // lookup above. Best-effort: if the name search finds nothing or finds the wrong person, the
+  // TVmaze list alone — already correct, just incomplete — is still shown rather than nothing.
+  let fullFilmography = filmography;
+  if (!isWikidataId) {
+    const wikidataId = await bulkImportContext.run(true, () => wikidata.findPersonByName(person.name)).catch(() => null);
+    if (wikidataId) {
+      const movieCredits = await getMovieFilmography(wikidataId);
+      const seen = new Set(filmography.map((f) => f.title.toLowerCase().trim()));
+      fullFilmography = [...filmography, ...movieCredits.filter((f) => !seen.has(f.title.toLowerCase().trim()))];
+      debugLog('actor', `${person.name} : +${fullFilmography.length - filmography.length} crédits films (Wikidata ${wikidataId}).`);
+    } else {
+      debugLog('actor', `${person.name} : pas de correspondance Wikidata trouvée, filmographie TVmaze seule (${filmography.length}).`);
+    }
+  }
+
+  const bio = await wikipedia.getPersonBio(person.name).catch(() => null);
+  return { ...person, bio, filmography: fullFilmography };
+}
+
 router.get('/actor/:personId', async (req, res, next) => {
   try {
     const { personId } = req.params;
-    const isWikidataId = /^Q\d+$/.test(personId);
+    const cached = db.prepare('SELECT * FROM people WHERE person_id = ?').get(personId);
+    const isFresh = cached && Date.now() - new Date(cached.updated_at + 'Z').getTime() < PEOPLE_STALE_MS;
 
-    let person, filmography;
-    if (isWikidataId) {
-      [person, filmography] = await Promise.all([wikidata.getPerson(personId), getMovieFilmography(personId)]);
-    } else {
-      [person, filmography] = await Promise.all([tvmaze.getPerson(personId), tvmaze.getPersonFilmography(personId)]);
+    if (isFresh) {
+      return res.json({
+        person_id: cached.person_id, name: cached.name, photo: cached.photo,
+        birthday: cached.birthday, country: cached.country, bio: cached.bio,
+        filmography: JSON.parse(cached.filmography_json),
+      });
     }
 
-    if (!person) return res.status(404).json({ error: 'Acteur introuvable.' });
+    let actor;
+    try {
+      actor = await fetchActorLive(personId);
+    } catch (error) {
+      // A stale-but-real cached page beats a blank modal when upstream sources are down.
+      if (!cached) throw error;
+      debugLog('actor', `Rafraîchissement échoué (${error.message}), on garde la version en cache.`);
+      actor = null;
+    }
 
-    // TVmaze is a TV-only database — its castcredits never include an actor's films, so a TVmaze-
-    // sourced actor's filmography here is always missing that whole side. Cross-referencing by
-    // name into Wikidata finds the person's Wikidata id, which unlocks the AlloCiné/Wikidata movie
-    // lookup above. Best-effort: if the name search finds nothing or finds the wrong person, the
-    // TVmaze list alone — already correct, just incomplete — is still shown rather than nothing.
-    let fullFilmography = filmography;
-    if (!isWikidataId) {
-      const wikidataId = await bulkImportContext.run(true, () => wikidata.findPersonByName(person.name)).catch(() => null);
-      if (wikidataId) {
-        const movieCredits = await getMovieFilmography(wikidataId);
-        const seen = new Set(filmography.map((f) => f.title.toLowerCase().trim()));
-        fullFilmography = [...filmography, ...movieCredits.filter((f) => !seen.has(f.title.toLowerCase().trim()))];
-        debugLog('actor', `${person.name} : +${fullFilmography.length - filmography.length} crédits films (Wikidata ${wikidataId}).`);
-      } else {
-        debugLog('actor', `${person.name} : pas de correspondance Wikidata trouvée, filmographie TVmaze seule (${filmography.length}).`);
+    if (!actor) {
+      if (cached) {
+        return res.json({
+          person_id: cached.person_id, name: cached.name, photo: cached.photo,
+          birthday: cached.birthday, country: cached.country, bio: cached.bio,
+          filmography: JSON.parse(cached.filmography_json),
+        });
       }
+      return res.status(404).json({ error: 'Acteur introuvable.' });
     }
 
-    const bio = await wikipedia.getPersonBio(person.name).catch(() => null);
-    res.json({ ...person, bio, filmography: fullFilmography });
+    db.prepare(`
+      INSERT INTO people (person_id, name, photo, birthday, country, bio, filmography_json, updated_at)
+      VALUES (@person_id, @name, @photo, @birthday, @country, @bio, @filmography_json, datetime('now'))
+      ON CONFLICT(person_id) DO UPDATE SET
+        name=excluded.name, photo=excluded.photo, birthday=excluded.birthday, country=excluded.country,
+        bio=excluded.bio, filmography_json=excluded.filmography_json, updated_at=datetime('now')
+    `).run({
+      person_id: personId,
+      name: actor.name,
+      photo: actor.photo || null,
+      birthday: actor.birthday || null,
+      country: actor.country || null,
+      bio: actor.bio || null,
+      filmography_json: JSON.stringify(actor.filmography),
+    });
+
+    res.json({ ...actor, person_id: personId });
   } catch (e) { next(e); }
 });
 

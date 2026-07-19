@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { PosterGridSkeleton } from '../../components/Skeleton.jsx';
+import { LoadingProgress, useElapsedSeconds } from '../../components/LoadingProgress.jsx';
 
 // Lets the mouse wheel scroll a horizontal row directly (like a streaming platform's shelf) —
 // without this, hovering a row and scrolling just scrolls the whole page vertically, and reaching
@@ -249,37 +250,13 @@ function JustWatchRow({ title, items }) {
 // no single obvious choice, so it defaults to TV/anime genres (the most common two of the three).
 const GENRE_MEDIA_TYPE = { all: 'tv', serie: 'tv', anime: 'tv', movie: 'movie' };
 
-// A movie search resolves a poster for every result missing one (see backend), which on a
-// Wikipedia/Wikidata rate-limited day can take a while — the static skeleton alone doesn't tell
-// the user whether it's still working or just stuck. A spinner plus an elapsed counter (and an
-// apologetic note once it's clearly taking a while) keeps that distinction obvious.
-function SearchProgress({ seconds }) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
-      <span className="w-4 h-4 border-2 border-gray-600 border-t-accent-500 rounded-full animate-spin" />
-      <span>Recherche en cours{seconds > 0 ? ` (${seconds}s)` : '…'}</span>
-      {seconds >= 8 && <span className="text-gray-500">— Wikipédia répond lentement, ça arrive.</span>}
-    </div>
-  );
-}
-
-function useElapsedSeconds(active) {
-  const [seconds, setSeconds] = useState(0);
-  useEffect(() => {
-    if (!active) { setSeconds(0); return; }
-    const start = Date.now();
-    const handle = setInterval(() => setSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
-    return () => clearInterval(handle);
-  }, [active]);
-  return seconds;
-}
 
 export default function Explore() {
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
   // What was actually searched, separate from what's typed: a search-as-you-type debounce means
   // every keystroke (including a mid-typo one) fires a real request, and on a slow/rate-limited
-  // day (see SearchProgress below) that's a pile of wasted, overlapping searches — annoying and
+  // day (see LoadingProgress below) that's a pile of wasted, overlapping searches — annoying and
   // exactly what triggers this. Only Enter or the button commits `query` into `submittedQuery`,
   // which is the only thing the search effect below reacts to.
   const [submittedQuery, setSubmittedQuery] = useState('');
@@ -381,7 +358,7 @@ export default function Explore() {
           <h2 className="text-sm font-semibold text-gray-400 mb-3">Résultats</h2>
           {results === null ? (
             <>
-              <SearchProgress seconds={searchSeconds} />
+              <LoadingProgress seconds={searchSeconds} className="mb-3" />
               <PosterGridSkeleton />
             </>
           ) : (

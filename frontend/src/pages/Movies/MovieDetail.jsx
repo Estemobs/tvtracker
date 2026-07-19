@@ -4,6 +4,7 @@ import { api } from '../../api/client.js';
 import ActorModal from '../../components/ActorModal.jsx';
 import ExpandableText from '../../components/ExpandableText.jsx';
 import { RatingBadge, PlatformRow } from '../../components/JustWatchInfo.jsx';
+import { LoadingProgress, useElapsedSeconds } from '../../components/LoadingProgress.jsx';
 
 // `release_date` is either a bare 4-digit year (Wikipedia's crude extraction, see
 // backend/src/services/wikipedia.js's extractYear) or a full YYYY-MM-DD (JustWatch's, more
@@ -22,8 +23,9 @@ export default function MovieDetail() {
 
   const load = () => api.get(`/movies/${movieId}`).then(setMovie);
   useEffect(() => { load(); }, [movieId]);
+  const loadingSeconds = useElapsedSeconds(!movie);
 
-  if (!movie) return <p className="text-gray-400 text-sm">Chargement…</p>;
+  if (!movie) return <LoadingProgress seconds={loadingSeconds} />;
 
   const toggleStatus = async () => {
     const newStatus = movie.status === 'watched' ? 'to_watch' : 'watched';
