@@ -1,4 +1,4 @@
-import { fetchWithRetry, mapWithLimit } from './httpRetry.js';
+import { fetchWithRetry } from './httpRetry.js';
 
 const HEADERS = { 'User-Agent': 'TVTracker/1.0 (self-hosted watch tracker; no contact url)' };
 const SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
@@ -229,18 +229,11 @@ export async function getPersonFilmography(personId) {
   }
   films.sort((a, b) => (b.year || '').localeCompare(a.year || ''));
 
-  // A bare {wikibase_item, title, year} can't be turned into a poster+link the way TVmaze's
-  // castcredits already can — resolve each film to the French Wikipedia article title this app
-  // uses as `source_id` for source='wikipedia' movies (see catalog.js/routes/explore.js), plus
-  // a poster, so the frontend can render/link it exactly like a TV credit.
-  // Up to 30 films x 2 calls each fired via a plain Promise.all would burst ~60 concurrent
-  // requests at Wikidata/Wikipedia — exactly the kind of spike that's tripped their rate limiter
-  // elsewhere in this app (see mapWithLimit's own comment in httpRetry.js). Capped here too.
-  return mapWithLimit(films, 3, async (film) => {
-    const [sourceId, poster] = await Promise.all([
-      getFrenchSitelink(film.wikibase_item).catch(() => null),
-      getPoster(film.wikibase_item).catch(() => null),
-    ]);
-    return { ...film, source: sourceId ? 'wikipedia' : null, source_id: sourceId, media_type: 'movie', poster };
-  });
+  // This used to resolve every film to a French Wikipedia article + poster right here (2 calls
+  // each), so opening an actor's page fired up to ~60 concurrent Wikidata/Wikipedia requests —
+  // enough on its own to trip their rate limiter and leave the whole modal stuck loading. Same
+  // fix as the Explorer's Top10/Nouveautés rows: show the title as-is (no extra calls at all
+  // beyond the one SPARQL query above), resolve to this app's catalog only for the one title
+  // someone actually clicks (see GET /explore/resolve, reused by the frontend for both).
+  return films.map((film) => ({ ...film, media_type: 'movie' }));
 }

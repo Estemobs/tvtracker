@@ -1,14 +1,35 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 
 export default function ActorModal({ personId, onClose }) {
   const [actor, setActor] = useState(null);
+  const [pendingTitle, setPendingTitle] = useState(null);
+  const [failedTitle, setFailedTitle] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     setActor(null);
     api.get(`/explore/actor/${personId}`).then(setActor);
   }, [personId]);
+
+  // Movie credits found via Wikidata (see backend) arrive with no source_id/poster — resolving
+  // all of them up front used to be exactly the burst of Wikipedia/Wikidata calls that made this
+  // modal hang. Instead they're resolved one at a time, only for the title actually clicked, the
+  // same way the Explorer's Top10/Nouveautés rows do.
+  const openFilm = async (f) => {
+    setFailedTitle(null);
+    setPendingTitle(f.title);
+    try {
+      const resolved = await api.get(`/explore/resolve?title=${encodeURIComponent(f.title)}&media_type=${f.media_type}`);
+      onClose();
+      navigate(`/explorer/${resolved.media_type}/${resolved.source}/${encodeURIComponent(resolved.source_id)}`);
+    } catch {
+      setFailedTitle(f.title);
+    } finally {
+      setPendingTitle(null);
+    }
+  };
 
   return (
     <div
@@ -50,21 +71,30 @@ export default function ActorModal({ personId, onClose }) {
                 </h3>
                 <div className="grid grid-cols-3 xs:grid-cols-4 gap-3">
                   {actor.filmography.map((f, i) => {
+                    const pending = pendingTitle === f.title;
+                    const failed = failedTitle === f.title;
                     const card = (
                       <>
-                        <div className="aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
+                        <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
                           {f.poster ? (
                             <img src={f.poster} alt={f.title} loading="lazy" className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500 p-1 text-center">{f.title}</div>
                           )}
+                          {pending && (
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] text-gray-200">…</div>
+                          )}
                         </div>
                         <div className="text-[11px] truncate">{f.title}</div>
-                        {f.year && <div className="text-[10px] text-gray-500">{f.year}</div>}
+                        {failed ? (
+                          <div className="text-[9px] text-red-400">Introuvable</div>
+                        ) : f.year && (
+                          <div className="text-[10px] text-gray-500">{f.year}</div>
+                        )}
                       </>
                     );
-                    // A film whose Wikidata entry couldn't be resolved to a Wikipedia article (no
-                    // French sitelink) has no `source_id` to link to — still shown, just not clickable.
+                    // TVmaze credits already carry a source_id (a plain, instant Link); Wikidata
+                    // movie credits don't (see wikidata.js) and resolve on click instead.
                     return f.source_id ? (
                       <Link
                         key={`${f.source}-${f.source_id}`}
@@ -75,9 +105,9 @@ export default function ActorModal({ personId, onClose }) {
                         {card}
                       </Link>
                     ) : (
-                      <div key={i} className="flex flex-col gap-1 opacity-60">
+                      <button key={i} onClick={() => openFilm(f)} className="flex flex-col gap-1 text-left">
                         {card}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
