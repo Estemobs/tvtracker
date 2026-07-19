@@ -170,6 +170,31 @@ function JustWatchRow({ title, items }) {
 // no single obvious choice, so it defaults to TV/anime genres (the most common two of the three).
 const GENRE_MEDIA_TYPE = { all: 'tv', serie: 'tv', anime: 'tv', movie: 'movie' };
 
+// A movie search resolves a poster for every result missing one (see backend), which on a
+// Wikipedia/Wikidata rate-limited day can take a while — the static skeleton alone doesn't tell
+// the user whether it's still working or just stuck. A spinner plus an elapsed counter (and an
+// apologetic note once it's clearly taking a while) keeps that distinction obvious.
+function SearchProgress({ seconds }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
+      <span className="w-4 h-4 border-2 border-gray-600 border-t-accent-500 rounded-full animate-spin" />
+      <span>Recherche en cours{seconds > 0 ? ` (${seconds}s)` : '…'}</span>
+      {seconds >= 8 && <span className="text-gray-500">— Wikipédia répond lentement, ça arrive.</span>}
+    </div>
+  );
+}
+
+function useElapsedSeconds(active) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!active) { setSeconds(0); return; }
+    const start = Date.now();
+    const handle = setInterval(() => setSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(handle);
+  }, [active]);
+  return seconds;
+}
+
 export default function Explore() {
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
@@ -190,6 +215,8 @@ export default function Explore() {
     }, 350);
     return () => clearTimeout(handle);
   }, [query]);
+
+  const searchSeconds = useElapsedSeconds(!!query.trim() && results === null);
 
   const genreMediaType = GENRE_MEDIA_TYPE[tab];
 
@@ -259,7 +286,14 @@ export default function Explore() {
       {query.trim() ? (
         <section>
           <h2 className="text-sm font-semibold text-gray-400 mb-3">Résultats</h2>
-          {results === null ? <PosterGridSkeleton /> : <ResultGrid results={filterByTab(results)} />}
+          {results === null ? (
+            <>
+              <SearchProgress seconds={searchSeconds} />
+              <PosterGridSkeleton />
+            </>
+          ) : (
+            <ResultGrid results={filterByTab(results)} />
+          )}
         </section>
       ) : selectedGenre ? (
         <section>
