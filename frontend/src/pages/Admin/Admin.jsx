@@ -4,12 +4,29 @@ import { api } from '../../api/client.js';
 export default function Admin() {
   const [pending, setPending] = useState(null);
   const [users, setUsers] = useState(null);
+  const [debug, setDebug] = useState(null);
 
   const load = () => {
     api.get('/admin/users/pending').then(setPending);
     api.get('/admin/users').then(setUsers);
+    api.get('/admin/debug').then(setDebug);
   };
   useEffect(() => { load(); }, []);
+
+  // While debug mode is on, poll the log buffer so it's usable as a live view: enable it, then
+  // go reproduce the issue elsewhere in the app and come back to see what happened.
+  useEffect(() => {
+    if (!debug?.enabled) return;
+    const handle = setInterval(() => {
+      api.get('/admin/debug').then(setDebug);
+    }, 3000);
+    return () => clearInterval(handle);
+  }, [debug?.enabled]);
+
+  const toggleDebug = async () => {
+    const data = await api.post('/admin/debug/toggle', { enabled: !debug?.enabled });
+    setDebug({ ...data, logs: [] });
+  };
 
   const approve = async (id) => { await api.post(`/admin/users/${id}/approve`); load(); };
   const refuse = async (id) => { await api.post(`/admin/users/${id}/refuse`); load(); };
@@ -73,6 +90,39 @@ export default function Admin() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-400">Mode debug</h2>
+          <button
+            onClick={toggleDebug}
+            className={`text-xs rounded-lg px-3 py-1.5 font-medium ${
+              debug?.enabled ? 'bg-red-900/40 text-red-400 border border-base-700' : 'bg-accent-600 hover:bg-accent-500'
+            }`}
+          >
+            {debug?.enabled ? 'Désactiver' : 'Activer'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">
+          Active la journalisation détaillée (chaque appel externe, rafraîchissement des tendances…) pour
+          diagnostiquer une page qui charge sans fin ou qui reste vide. Active-le, va reproduire le problème
+          ailleurs sur le site, puis reviens ici — les logs se rafraîchissent automatiquement.
+        </p>
+        {debug?.enabled && (
+          <div className="bg-black/40 border border-base-700 rounded-lg p-3 max-h-96 overflow-y-auto font-mono text-[11px] space-y-1">
+            {!debug.logs?.length ? (
+              <p className="text-gray-500">En attente d'activité…</p>
+            ) : (
+              debug.logs.map((l, i) => (
+                <div key={i} className="text-gray-300">
+                  <span className="text-gray-600">{new Date(l.at).toLocaleTimeString('fr-FR')}</span>{' '}
+                  <span className="text-accent-500">[{l.scope}]</span> {l.message}
+                </div>
+              ))
+            )}
           </div>
         )}
       </section>

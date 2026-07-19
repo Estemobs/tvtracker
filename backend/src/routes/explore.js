@@ -8,6 +8,7 @@ import * as justwatch from '../services/justwatch.js';
 import { enrichMovieWithWikidata } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
 import { bulkImportContext } from '../services/httpRetry.js';
+import { log as debugLog } from '../services/debugLog.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -100,11 +101,22 @@ const resolveMovie = (title) => wikipedia.searchMoviesAnyLanguage(title);
 // per-user: annotateAdded, the only per-user part, is applied fresh on every request below).
 let trendingCache = { data: null, expiresAt: 0 };
 const TRENDING_CACHE_MS = 60 * 60 * 1000;
+// A page load must never wait on the full refresh: on a slow/rate-limited day it can legitimately
+// take minutes (each of the ~180 title-search calls can retry with growing backoff — see
+// httpRetry.js), which is exactly what made the Explorer page look permanently stuck loading with
+// nothing on screen. A true cold start (nothing cached yet) waits at most this long before falling
+// back to an empty result; once *anything* is cached, a request never waits on a refresh at all —
+// see the stale-while-revalidate branch below.
+const TRENDING_COLD_START_TIMEOUT_MS = 8000;
 // Several requests can land while the cache is cold (e.g. two users opening Explorer around the
 // same time right after a restart) — without this, each would kick off its own full JustWatch +
 // title-search refresh in parallel, multiplying the exact rate-limit pressure the concurrency cap
 // above is trying to avoid. Sharing the in-flight promise means only the first request pays for it.
 let trendingRefresh = null;
+
+function emptyTrendingCategories() {
+  return { top10Series: [], top10Animes: [], top10Movies: [], newSeries: [], newAnimes: [], newMovies: [] };
+}
 
 async function buildTrendingCategories() {
   const [jwSeries, jwAnimes, jwMovies, jwNewSeries, jwNewAnimes, jwNewMovies] = await Promise.all([
@@ -128,24 +140,52 @@ async function buildTrendingCategories() {
   return { top10Series, top10Animes, top10Movies, newSeries, newAnimes, newMovies };
 }
 
+async function refreshTrendingCache() {
+  const startedAt = Date.now();
+  debugLog('trending', 'Rafraîchissement démarré.');
+  try {
+    // Full rate-limit backoff, not the short interactive cap: this always runs detached from any
+    // request (background warm-up, or fire-and-forget below) — nobody's waiting on it directly.
+    const data = await bulkImportContext.run(true, buildTrendingCategories);
+    trendingCache = { data, expiresAt: Date.now() + TRENDING_CACHE_MS };
+    debugLog('trending', `Rafraîchissement terminé en ${Date.now() - startedAt}ms — `
+      + `séries ${data.top10Series.length}/10, animes ${data.top10Animes.length}/10, films ${data.top10Movies.length}/10, `
+      + `nouveautés séries/animes/films ${data.newSeries.length}/${data.newAnimes.length}/${data.newMovies.length}.`);
+  } catch (error) {
+    console.error('[trending] refresh failed:', error);
+    debugLog('trending', `Échec du rafraîchissement après ${Date.now() - startedAt}ms : ${error.message}`);
+    // JustWatch is an unofficial, undocumented API — if it's down or its schema shifted, keep
+    // serving the last good ranking (if any) rather than a broken Explorer page. If there's never
+    // been a good ranking yet, cache an empty one anyway so a broken upstream doesn't force every
+    // single request to retry the same slow failure — just retry sooner than a full hour.
+    if (!trendingCache.data) trendingCache = { data: emptyTrendingCategories(), expiresAt: Date.now() + 5 * 60 * 1000 };
+  }
+}
+
+function triggerTrendingRefresh() {
+  if (!trendingRefresh) {
+    trendingRefresh = refreshTrendingCache().finally(() => { trendingRefresh = null; });
+  }
+  return trendingRefresh;
+}
+
+// Runs once at server startup (see index.js) so the cache is normally already warm by the time
+// anyone opens Explorer, and again every TRENDING_CACHE_MS to keep it that way.
+export function startTrendingWarmup() {
+  void triggerTrendingRefresh();
+  setInterval(() => void triggerTrendingRefresh(), TRENDING_CACHE_MS);
+}
+
 router.get('/trending', async (req, res, next) => {
   try {
-    if (!trendingCache.data || Date.now() > trendingCache.expiresAt) {
-      if (!trendingRefresh) {
-        // Nobody is waiting on a spinner for this (it's cached for an hour) — opt into the full
-        // rate-limit backoff instead of the short interactive cap, same as the TV Time import.
-        trendingRefresh = bulkImportContext.run(true, buildTrendingCategories).finally(() => { trendingRefresh = null; });
-      }
-      try {
-        trendingCache = { data: await trendingRefresh, expiresAt: Date.now() + TRENDING_CACHE_MS };
-      } catch (error) {
-        // JustWatch is an unofficial, undocumented API — if it's down or its schema shifted,
-        // fall back to serving the last good ranking rather than a broken Explorer page.
-        if (!trendingCache.data) throw error;
-        console.error('[trending] refresh failed, serving stale cache:', error);
-      }
+    if (!trendingCache.data) {
+      // True cold start — bound the wait, never hang the page on it.
+      await Promise.race([triggerTrendingRefresh(), new Promise((r) => setTimeout(r, TRENDING_COLD_START_TIMEOUT_MS))]);
+    } else if (Date.now() > trendingCache.expiresAt) {
+      // Stale-while-revalidate: serve what we have immediately, refresh happens in the background.
+      void triggerTrendingRefresh();
     }
-    const c = trendingCache.data;
+    const c = trendingCache.data || emptyTrendingCategories();
     res.json({
       top10_series: annotateAdded(req, c.top10Series),
       top10_animes: annotateAdded(req, c.top10Animes),

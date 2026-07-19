@@ -1,9 +1,22 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { isDebugEnabled, setDebugEnabled, getLogs } from '../services/debugLog.js';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
+
+// A toggle to turn on verbose logging (every external HTTP call, cache refresh timing) into an
+// in-memory buffer readable from here — for diagnosing a stuck/blank page without shell access to
+// `docker logs`. See services/debugLog.js for what gets logged and why it's off by default.
+router.get('/debug', (req, res) => {
+  res.json({ enabled: isDebugEnabled(), logs: getLogs() });
+});
+
+router.post('/debug/toggle', (req, res) => {
+  setDebugEnabled(!!req.body?.enabled);
+  res.json({ enabled: isDebugEnabled() });
+});
 
 router.get('/users/pending', (req, res) => {
   const rows = db.prepare(`SELECT id, username, email, created_at FROM users

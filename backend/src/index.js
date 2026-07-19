@@ -6,7 +6,7 @@ import { DATA_DIR } from './db/index.js';
 import { bootstrapAdmin } from './bootstrapAdmin.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
-import exploreRoutes from './routes/explore.js';
+import exploreRoutes, { startTrendingWarmup } from './routes/explore.js';
 import showsRoutes from './routes/shows.js';
 import moviesRoutes from './routes/movies.js';
 import profileRoutes from './routes/profile.js';
@@ -60,6 +60,7 @@ app.use((err, req, res, next) => {
 const server = app.listen(PORT, () => {
   console.log(`[tvtracker] backend listening on port ${PORT}`);
   startDiscordNotificationLoop();
+  startTrendingWarmup();
 });
 
 // The TV Time import processes hundreds of shows/movies against external APIs and can take

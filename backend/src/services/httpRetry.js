@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { log as debugLog } from './debugLog.js';
 
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 const MAX_RETRY_DELAY_MS = 3000;
@@ -57,7 +58,10 @@ function registerSuccess(hostname) {
 // theoretical risk into an observed multi-minute stall, so every attempt gets a hard cap.
 export async function fetchWithRetry(url, options = {}, retries = 4) {
   const hostname = hostnameOf(url);
+  const startedAt = Date.now();
+  const cooldownWait = hostState.get(hostname)?.until - Date.now();
   await waitForCooldown(hostname);
+  if (cooldownWait > 0) debugLog('http', `${hostname}: attente de ${Math.round(Math.max(cooldownWait, 0))}ms (cooldown après rate-limit) avant ${url}`);
 
   let lastResp;
   let lastError;
@@ -69,10 +73,12 @@ export async function fetchWithRetry(url, options = {}, retries = 4) {
       clearTimeout(timer);
       if (resp.ok || !RETRYABLE_STATUSES.has(resp.status)) {
         registerSuccess(hostname);
+        debugLog('http', `${options.method || 'GET'} ${url} -> ${resp.status} en ${Date.now() - startedAt}ms (essai ${attempt + 1}/${retries + 1})`);
         return resp;
       }
       lastResp = resp;
       if (resp.status === 429) registerRateLimit(hostname);
+      debugLog('http', `${options.method || 'GET'} ${url} -> ${resp.status} (essai ${attempt + 1}/${retries + 1})`);
       if (attempt < retries) {
         // Wikimedia sometimes asks for a very long Retry-After (a minute+) after a burst of
         // requests — honoring that literally would make a single item block the whole import
@@ -87,11 +93,13 @@ export async function fetchWithRetry(url, options = {}, retries = 4) {
     } catch (e) {
       clearTimeout(timer);
       lastError = e;
+      debugLog('http', `${options.method || 'GET'} ${url} a échoué : ${e.message} (essai ${attempt + 1}/${retries + 1})`);
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
       }
     }
   }
+  debugLog('http', `${options.method || 'GET'} ${url} abandonné après ${Date.now() - startedAt}ms`);
   if (lastResp) return lastResp;
   throw lastError;
 }
