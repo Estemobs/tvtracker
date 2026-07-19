@@ -57,6 +57,48 @@ function CategoryRow({ title, items }) {
   );
 }
 
+// Top 10 rows show a rank number over the poster and the streaming platforms JustWatch reports
+// the title as actually available on (Netflix, Disney+…) — the real "trending" signal the plain
+// CategoryRow can't show, since its items have no jw_rank/platforms.
+function Top10Row({ title, items }) {
+  if (!items || !items.length) return null;
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-gray-400 mb-3">{title}</h2>
+      <div className="flex gap-4 overflow-x-auto pb-2">
+        {items.map((r) => (
+          <Link
+            key={`${r.source}-${r.source_id}`}
+            to={`/explorer/${r.media_type}/${r.source}/${encodeURIComponent(r.source_id)}`}
+            className="group flex flex-col gap-2 w-32 sm:w-36 flex-shrink-0"
+          >
+            <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
+              {r.poster ? (
+                <img src={r.poster} alt={r.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs p-2 text-center">{r.title}</div>
+              )}
+              <span className="absolute bottom-0 left-0 text-3xl font-black text-white/90 leading-none px-2 py-1"
+                style={{ WebkitTextStroke: '1.5px rgba(0,0,0,0.6)' }}>
+                {r.jw_rank}
+              </span>
+              {r.already_added && (
+                <span className="absolute top-1.5 right-1.5 bg-green-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
+                  Déjà ajouté
+                </span>
+              )}
+            </div>
+            <div className="text-sm font-medium truncate">{r.title}</div>
+            {r.platforms?.length > 0 && (
+              <div className="text-[11px] text-gray-500 -mt-1.5 truncate">{r.platforms.join(' · ')}</div>
+            )}
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function Explore() {
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');

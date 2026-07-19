@@ -55,17 +55,17 @@ router.get('/search', async (req, res, next) => {
 // JustWatch only knows titles, not this app's TVmaze/Wikipedia ids — a JustWatch ranking is
 // resolved back into our own catalog via the same title search already used by /search, so the
 // result links, posters and "already_added" flag all behave exactly like everywhere else in the
-// app. `wantType`, when given, drops anything that doesn't match TVmaze's own genre-based
-// series/anime split (see isAnime in tvmaze.js) — JustWatch's "Animation" genre also catches
-// Western cartoons, so this is what keeps e.g. a Pixar film out of the anime Top 10.
-async function resolveJustWatchItems(jwItems, resolver, { wantType, limit = 10 } = {}) {
+// app. `forceType`, when given, stamps the result with that type rather than trusting TVmaze's own
+// genre tag: TVmaze's "Anime" genre is inconsistently applied (e.g. it's missing on One Piece
+// itself), so for the anime category the classification already done upstream — JustWatch's
+// "Animation" genre restricted to Japanese productions — is the more reliable signal.
+async function resolveJustWatchItems(jwItems, resolver, { forceType, limit = 10 } = {}) {
   const resolved = await Promise.all(jwItems.map(async (jw) => {
     try {
       const matches = await resolver(jw.title);
       const match = matches[0];
       if (!match) return null;
-      if (wantType && match.type !== wantType) return null;
-      return { ...match, jw_rank: jw.rank, platforms: jw.platforms };
+      return { ...match, type: forceType || match.type, jw_rank: jw.rank, platforms: jw.platforms };
     } catch {
       return null;
     }
@@ -94,11 +94,11 @@ async function buildTrendingCategories() {
   ]);
 
   const [top10Series, top10Animes, top10Movies, newSeries, newAnimes, newMovies] = await Promise.all([
-    resolveJustWatchItems(jwSeries, resolveShow, { wantType: 'serie' }),
-    resolveJustWatchItems(jwAnimes, resolveShow, { wantType: 'anime' }),
+    resolveJustWatchItems(jwSeries, resolveShow, { forceType: 'serie' }),
+    resolveJustWatchItems(jwAnimes, resolveShow, { forceType: 'anime' }),
     resolveJustWatchItems(jwMovies, resolveMovie),
-    resolveJustWatchItems(jwNewSeries, resolveShow, { wantType: 'serie' }),
-    resolveJustWatchItems(jwNewAnimes, resolveShow, { wantType: 'anime' }),
+    resolveJustWatchItems(jwNewSeries, resolveShow, { forceType: 'serie' }),
+    resolveJustWatchItems(jwNewAnimes, resolveShow, { forceType: 'anime' }),
     resolveJustWatchItems(jwNewMovies, resolveMovie),
   ]);
 
