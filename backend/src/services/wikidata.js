@@ -1,4 +1,4 @@
-import { fetchWithRetry } from './httpRetry.js';
+import { fetchWithRetry, mapWithLimit } from './httpRetry.js';
 
 const HEADERS = { 'User-Agent': 'TVTracker/1.0 (self-hosted watch tracker; no contact url)' };
 const SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
@@ -154,6 +154,29 @@ export async function getNextInstallment(wikibaseItem) {
   return { title: row.nextLabel.value, release_date: row.date?.value?.slice(0, 10) || null };
 }
 
+// TVmaze-sourced actors only ever carry a TVmaze person id, which Wikidata has no direct mapping
+// from — resolving by name is the only way to cross-reference them into Wikidata's P161 reverse
+// lookup (see getPersonFilmography below) and so recover the movie side of their filmography that
+// TVmaze, being a TV-only database, simply doesn't have. `humansOnly` guards against a same-named
+// non-person entity winning the top search result (rare, but a wrong Q-id would attribute a
+// stranger's filmography to this actor, which is worse than showing no extra filmography at all).
+export async function findPersonByName(name) {
+  const url = new URL(API_ENDPOINT);
+  url.searchParams.set('action', 'wbsearchentities');
+  url.searchParams.set('search', name);
+  url.searchParams.set('language', 'en');
+  url.searchParams.set('type', 'item');
+  url.searchParams.set('limit', '3');
+  url.searchParams.set('format', 'json');
+  const resp = await fetchWithRetry(url, { headers: HEADERS });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  for (const candidate of data.search || []) {
+    if (/\bactor|actress|actor and film director\b/i.test(candidate.description || '')) return candidate.id;
+  }
+  return null;
+}
+
 export async function getPerson(personId) {
   const url = new URL(API_ENDPOINT);
   url.searchParams.set('action', 'wbgetentities');
@@ -210,12 +233,14 @@ export async function getPersonFilmography(personId) {
   // castcredits already can — resolve each film to the French Wikipedia article title this app
   // uses as `source_id` for source='wikipedia' movies (see catalog.js/routes/explore.js), plus
   // a poster, so the frontend can render/link it exactly like a TV credit.
-  const resolved = await Promise.all(films.map(async (film) => {
+  // Up to 30 films x 2 calls each fired via a plain Promise.all would burst ~60 concurrent
+  // requests at Wikidata/Wikipedia — exactly the kind of spike that's tripped their rate limiter
+  // elsewhere in this app (see mapWithLimit's own comment in httpRetry.js). Capped here too.
+  return mapWithLimit(films, 3, async (film) => {
     const [sourceId, poster] = await Promise.all([
       getFrenchSitelink(film.wikibase_item).catch(() => null),
       getPoster(film.wikibase_item).catch(() => null),
     ]);
     return { ...film, source: sourceId ? 'wikipedia' : null, source_id: sourceId, media_type: 'movie', poster };
-  }));
-  return resolved;
+  });
 }

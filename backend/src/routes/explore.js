@@ -264,8 +264,24 @@ router.get('/actor/:personId', async (req, res, next) => {
       : await Promise.all([tvmaze.getPerson(personId), tvmaze.getPersonFilmography(personId)]);
 
     if (!person) return res.status(404).json({ error: 'Acteur introuvable.' });
+
+    // TVmaze is a TV-only database — its castcredits never include an actor's films, so a TVmaze-
+    // sourced actor's filmography here is always missing that whole side. Cross-referencing by
+    // name into Wikidata (P161, the same reverse lookup used for movie actors) fills that gap.
+    // Best-effort: if the name search finds nothing or finds the wrong person, the TVmaze list
+    // alone — already correct, just incomplete — is still shown rather than nothing.
+    let fullFilmography = filmography;
+    if (!isWikidataId) {
+      const wikidataId = await wikidata.findPersonByName(person.name).catch(() => null);
+      if (wikidataId) {
+        const movieCredits = await wikidata.getPersonFilmography(wikidataId).catch(() => []);
+        const seen = new Set(filmography.map((f) => f.title.toLowerCase().trim()));
+        fullFilmography = [...filmography, ...movieCredits.filter((f) => !seen.has(f.title.toLowerCase().trim()))];
+      }
+    }
+
     const bio = await wikipedia.getPersonBio(person.name).catch(() => null);
-    res.json({ ...person, bio, filmography });
+    res.json({ ...person, bio, filmography: fullFilmography });
   } catch (e) { next(e); }
 });
 
