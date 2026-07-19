@@ -7,7 +7,6 @@ import * as wikidata from '../services/wikidata.js';
 import * as justwatch from '../services/justwatch.js';
 import { enrichMovieWithWikidata } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
-import { bulkImportContext, mapWithLimit } from '../services/httpRetry.js';
 import { log as debugLog } from '../services/debugLog.js';
 
 const router = Router();
@@ -54,53 +53,58 @@ router.get('/search', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// JustWatch only knows titles, not this app's TVmaze/Wikipedia ids — a JustWatch ranking is
-// resolved back into our own catalog via the same title search already used by /search, so the
-// result links, posters and "already_added" flag all behave exactly like everywhere else in the
-// app. `forceType`, when given, stamps the result with that type rather than trusting TVmaze's own
-// genre tag: TVmaze's "Anime" genre is inconsistently applied (e.g. it's missing on One Piece
-// itself), so for the anime category the classification already done upstream — JustWatch's
-// "Animation" genre restricted to Japanese productions — is the more reliable signal.
-//
-// `concurrency` defaults low: a single movie title search can itself fan out to several Wikidata
-// calls (missing-poster fallback, see wikipedia.js), so resolving titles here at any real
-// concurrency multiplies into a burst big enough to trip Wikidata's rate limiter — which then
-// stalls *unrelated* Wikipedia-backed features (e.g. someone else's Explorer search) for the
-// duration of the cooldown. Shows don't have that fan-out (TVmaze is a single call per title).
-async function resolveJustWatchItems(jwItems, resolver, { forceType, limit = 10, concurrency = 1 } = {}) {
-  const resolved = await mapWithLimit(jwItems, concurrency, async (jw) => {
-    try {
-      const matches = await resolver(jw.title);
-      const match = matches[0];
-      if (!match) return null;
-      return { ...match, type: forceType || match.type, jw_rank: jw.rank, platforms: jw.platforms };
-    } catch {
-      return null;
-    }
-  });
-  return dedupe(resolved.filter(Boolean)).slice(0, limit);
+// Earlier version of this resolved every JustWatch title against TVmaze/Wikipedia *up front*, at
+// cache-build time, to get this app's own catalog id/poster/link for all ~180 titles across the
+// 6 categories. That made the whole page depend on ~180 external title searches succeeding —
+// exactly the burst that kept tripping Wikidata/Wikipedia's rate limiter and left Explorer showing
+// nothing for minutes at a time. JustWatch already gives us a title, a poster (its own CDN, see
+// posterUrl in justwatch.js) and platforms — enough to render the page with zero TVmaze/Wikipedia
+// calls. Resolving a title to this app's catalog now only happens for the *one* title someone
+// actually clicks, via GET /explore/resolve below — see resolveShow/resolveMovie there.
+function formatJustWatchItems(jwItems, { mediaType, type }) {
+  return jwItems.slice(0, 10).map((jw) => ({
+    jw_title: jw.title,
+    media_type: mediaType,
+    type,
+    title: jw.title,
+    poster: jw.poster,
+    year: jw.year,
+    jw_rank: jw.rank,
+    platforms: jw.platforms,
+  }));
 }
 
 const resolveShow = (title) => tvmaze.searchShows(title);
 const resolveMovie = (title) => wikipedia.searchMoviesAnyLanguage(title);
 
-// A full trending refresh fans out to JustWatch plus ~5 title searches per category against
-// TVmaze/Wikipedia — too slow and too heavy on those hosts to redo on every Explorer page view,
-// and the ranking itself doesn't meaningfully change minute to minute. Cached process-wide (not
+// Resolves a single title someone clicked on in a Top10/Nouveautés row into this app's own
+// catalog entry (source/source_id/poster/...), the same way /search already does — just for one
+// item at a time, at the pace of actual clicks, instead of a whole category at once.
+router.get('/resolve', async (req, res, next) => {
+  try {
+    const { title, media_type: mediaType } = req.query;
+    if (!title || !['tv', 'movie'].includes(mediaType)) return res.status(400).json({ error: 'Paramètres invalides.' });
+    const matches = mediaType === 'tv' ? await resolveShow(title) : await resolveMovie(title);
+    const match = matches[0];
+    if (!match) return res.status(404).json({ error: 'Introuvable dans le catalogue.' });
+    res.json(annotateAdded(req, [match])[0]);
+  } catch (e) { next(e); }
+});
+
+// A full trending refresh fans out to 6 JustWatch queries — fast and not dependent on
+// TVmaze/Wikipedia at all (see formatJustWatchItems above) — but the ranking itself doesn't
+// meaningfully change minute to minute either way, so it's still cached process-wide (not
 // per-user: annotateAdded, the only per-user part, is applied fresh on every request below).
 let trendingCache = { data: null, expiresAt: 0 };
 const TRENDING_CACHE_MS = 60 * 60 * 1000;
-// A page load must never wait on the full refresh: on a slow/rate-limited day it can legitimately
-// take minutes (each of the ~180 title-search calls can retry with growing backoff — see
-// httpRetry.js), which is exactly what made the Explorer page look permanently stuck loading with
-// nothing on screen. A true cold start (nothing cached yet) waits at most this long before falling
-// back to an empty result; once *anything* is cached, a request never waits on a refresh at all —
-// see the stale-while-revalidate branch below.
+// A page load must never wait on the full refresh — JustWatch is an unofficial API and can be
+// slow or briefly unreachable. A true cold start (nothing cached yet) waits at most this long
+// before falling back to an empty result; once *anything* is cached, a request never waits on a
+// refresh at all — see the stale-while-revalidate branch below.
 const TRENDING_COLD_START_TIMEOUT_MS = 8000;
 // Several requests can land while the cache is cold (e.g. two users opening Explorer around the
-// same time right after a restart) — without this, each would kick off its own full JustWatch +
-// title-search refresh in parallel, multiplying the exact rate-limit pressure the concurrency cap
-// above is trying to avoid. Sharing the in-flight promise means only the first request pays for it.
+// same time right after a restart) — without this, each would kick off its own JustWatch refresh
+// in parallel. Sharing the in-flight promise means only the first request pays for it.
 let trendingRefresh = null;
 
 function emptyTrendingCategories() {
@@ -117,25 +121,21 @@ async function buildTrendingCategories() {
     justwatch.getNew('MOVIE'),
   ]);
 
-  const [top10Series, top10Animes, top10Movies, newSeries, newAnimes, newMovies] = await Promise.all([
-    resolveJustWatchItems(jwSeries, resolveShow, { forceType: 'serie', concurrency: 4 }),
-    resolveJustWatchItems(jwAnimes, resolveShow, { forceType: 'anime', concurrency: 4 }),
-    resolveJustWatchItems(jwMovies, resolveMovie),
-    resolveJustWatchItems(jwNewSeries, resolveShow, { forceType: 'serie', concurrency: 4 }),
-    resolveJustWatchItems(jwNewAnimes, resolveShow, { forceType: 'anime', concurrency: 4 }),
-    resolveJustWatchItems(jwNewMovies, resolveMovie),
-  ]);
-
-  return { top10Series, top10Animes, top10Movies, newSeries, newAnimes, newMovies };
+  return {
+    top10Series: formatJustWatchItems(jwSeries, { mediaType: 'tv', type: 'serie' }),
+    top10Animes: formatJustWatchItems(jwAnimes, { mediaType: 'tv', type: 'anime' }),
+    top10Movies: formatJustWatchItems(jwMovies, { mediaType: 'movie', type: 'movie' }),
+    newSeries: formatJustWatchItems(jwNewSeries, { mediaType: 'tv', type: 'serie' }),
+    newAnimes: formatJustWatchItems(jwNewAnimes, { mediaType: 'tv', type: 'anime' }),
+    newMovies: formatJustWatchItems(jwNewMovies, { mediaType: 'movie', type: 'movie' }),
+  };
 }
 
 async function refreshTrendingCache() {
   const startedAt = Date.now();
   debugLog('trending', 'Rafraîchissement démarré.');
   try {
-    // Full rate-limit backoff, not the short interactive cap: this always runs detached from any
-    // request (background warm-up, or fire-and-forget below) — nobody's waiting on it directly.
-    const data = await bulkImportContext.run(true, buildTrendingCategories);
+    const data = await buildTrendingCategories();
     trendingCache = { data, expiresAt: Date.now() + TRENDING_CACHE_MS };
     debugLog('trending', `Rafraîchissement terminé en ${Date.now() - startedAt}ms — `
       + `séries ${data.top10Series.length}/10, animes ${data.top10Animes.length}/10, films ${data.top10Movies.length}/10, `
@@ -175,13 +175,16 @@ router.get('/trending', async (req, res, next) => {
       void triggerTrendingRefresh();
     }
     const c = trendingCache.data || emptyTrendingCategories();
+    // Unlike /search or /resolve, these items aren't tied to this app's catalog yet (see
+    // formatJustWatchItems above) — there's no source/source_id to check "already_added" against
+    // until the title is actually resolved, which only happens when someone clicks it.
     res.json({
-      top10_series: annotateAdded(req, c.top10Series),
-      top10_animes: annotateAdded(req, c.top10Animes),
-      top10_movies: annotateAdded(req, c.top10Movies),
-      new_series: annotateAdded(req, c.newSeries),
-      new_animes: annotateAdded(req, c.newAnimes),
-      new_movies: annotateAdded(req, c.newMovies),
+      top10_series: c.top10Series,
+      top10_animes: c.top10Animes,
+      top10_movies: c.top10Movies,
+      new_series: c.newSeries,
+      new_animes: c.newAnimes,
+      new_movies: c.newMovies,
     });
   } catch (e) { next(e); }
 });

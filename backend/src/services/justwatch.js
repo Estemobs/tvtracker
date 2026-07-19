@@ -66,8 +66,9 @@ async function fetchTitles(root, { objectType, genres, excludeGenres, production
   }));
 }
 
-// `first` is padded well above 10: some titles won't resolve to this app's own catalog (fuzzy
-// title-search miss) or get filtered out (e.g. a Western cartoon slipping into the anime genre
-// filter) — callers trim the resolved, filtered result down to 10 themselves.
-export const getPopular = (objectType, opts = {}) => fetchTitles('popularTitles', { objectType, first: 30, ...opts });
-export const getNew = (objectType, opts = {}) => fetchTitles('newTitles', { objectType, first: 30, ...opts });
+// These are shown to the user as-is now (title/poster straight from JustWatch, see explore.js's
+// formatJustWatchItems) rather than being resolved+filtered against TVmaze/Wikipedia first, so
+// `first` only needs a small buffer over the 10 actually displayed, not the large padding a
+// resolve-and-filter step used to need to still end up with 10 after some inevitably failed.
+export const getPopular = (objectType, opts = {}) => fetchTitles('popularTitles', { objectType, first: 12, ...opts });
+export const getNew = (objectType, opts = {}) => fetchTitles('newTitles', { objectType, first: 12, ...opts });
