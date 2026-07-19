@@ -16,17 +16,27 @@ function posterUrl(path) {
 
 // Only subscription/free offers count as "available on this platform" for a trending badge —
 // rental/purchase offers exist for almost everything and would make the badge list meaningless.
-function extractPlatforms(offers) {
+function dedupedNames(offers, types) {
   const seen = new Set();
   const platforms = [];
   for (const offer of offers || []) {
-    if (offer.monetizationType !== 'FLATRATE' && offer.monetizationType !== 'FREE') continue;
+    if (!types.includes(offer.monetizationType)) continue;
     const name = offer.package?.clearName;
     if (!name || seen.has(name)) continue;
     seen.add(name);
     platforms.push(name);
   }
   return platforms.slice(0, 4);
+}
+
+const extractPlatforms = (offers) => dedupedNames(offers, ['FLATRATE', 'FREE']);
+
+// A show/movie detail page has room to actually say "where can I watch this" — unlike the Top10
+// badge, showing rental/purchase options here (only when there's no subscription option at all)
+// beats showing nothing for a newer film that isn't included with any subscription yet.
+function extractPlatformsForDetail(offers) {
+  const flatrate = extractPlatforms(offers);
+  return flatrate.length > 0 ? flatrate : dedupedNames(offers, ['RENT', 'BUY']);
 }
 
 async function fetchTitles(root, { objectType, genres, excludeGenres, productionCountries, first }) {
@@ -102,7 +112,7 @@ export async function findByTitle(title, objectType) {
   if (!node) return null;
   const score = node.content.scoring?.imdbScore ?? node.content.scoring?.tmdbScore ?? null;
   return {
-    platforms: extractPlatforms(node.offers),
+    platforms: extractPlatformsForDetail(node.offers),
     score: score != null ? Math.round(score * 10) / 10 : null,
     url: node.content.fullPath ? `https://www.justwatch.com${node.content.fullPath}` : null,
     runtime: node.content.runtime || null,
