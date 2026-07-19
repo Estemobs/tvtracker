@@ -277,6 +277,12 @@ function useElapsedSeconds(active) {
 export default function Explore() {
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
+  // What was actually searched, separate from what's typed: a search-as-you-type debounce means
+  // every keystroke (including a mid-typo one) fires a real request, and on a slow/rate-limited
+  // day (see SearchProgress below) that's a pile of wasted, overlapping searches — annoying and
+  // exactly what triggers this. Only Enter or the button commits `query` into `submittedQuery`,
+  // which is the only thing the search effect below reacts to.
+  const [submittedQuery, setSubmittedQuery] = useState('');
   const [results, setResults] = useState(null);
   const [categories, setCategories] = useState(null);
   const [genres, setGenres] = useState(null);
@@ -288,14 +294,14 @@ export default function Explore() {
   }, []);
 
   useEffect(() => {
-    if (!query.trim()) { setResults(null); return; }
-    const handle = setTimeout(() => {
-      api.get(`/explore/search?q=${encodeURIComponent(query)}`).then((data) => setResults(data.results));
-    }, 350);
-    return () => clearTimeout(handle);
-  }, [query]);
+    if (!submittedQuery.trim()) { setResults(null); return; }
+    setResults(null);
+    api.get(`/explore/search?q=${encodeURIComponent(submittedQuery)}`).then((data) => setResults(data.results));
+  }, [submittedQuery]);
 
-  const searchSeconds = useElapsedSeconds(!!query.trim() && results === null);
+  const runSearch = () => setSubmittedQuery(query);
+
+  const searchSeconds = useElapsedSeconds(!!submittedQuery.trim() && results === null);
 
   const genreMediaType = GENRE_MEDIA_TYPE[tab];
 
@@ -326,12 +332,20 @@ export default function Explore() {
     <div className="space-y-5">
       <h1 className="text-xl font-bold">Explorer</h1>
 
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Rechercher une série, un anime, un film…"
-        className="w-full rounded-lg bg-base-800 border border-base-600 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
-      />
+      <form onSubmit={(e) => { e.preventDefault(); runSearch(); }} className="flex gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Rechercher une série, un anime, un film…"
+          className="flex-1 min-w-0 rounded-lg bg-base-800 border border-base-600 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
+        />
+        <button
+          type="submit"
+          className="bg-accent-600 hover:bg-accent-500 text-sm rounded-lg px-4 py-2.5 font-medium shrink-0"
+        >
+          Rechercher
+        </button>
+      </form>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex bg-base-800 rounded-lg p-0.5 border border-base-700 w-fit">
@@ -348,7 +362,7 @@ export default function Explore() {
           ))}
         </div>
 
-        {!query.trim() && genres && (
+        {!submittedQuery.trim() && genres && (
           <select
             value={selectedGenre || ''}
             onChange={(e) => setSelectedGenre(e.target.value || null)}
@@ -362,7 +376,7 @@ export default function Explore() {
         )}
       </div>
 
-      {query.trim() ? (
+      {submittedQuery.trim() ? (
         <section>
           <h2 className="text-sm font-semibold text-gray-400 mb-3">Résultats</h2>
           {results === null ? (
