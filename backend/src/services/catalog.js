@@ -125,10 +125,13 @@ export async function enrichMovieWithWikidata(details, { posterOnly = false } = 
 
 export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) {
   let movie = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, String(sourceId));
-  // Treat a movie missing its poster or cast as stale regardless of age: an empty result more
-  // often means a past fetch failed (rate limit, momentary network issue) than that the source
-  // genuinely has nothing — worth retrying on the next view rather than sitting incomplete for a day.
-  const isIncomplete = movie && (!movie.poster || !movie.backdrop || movie.cast_json === '[]' || !movie.cast_json);
+  // Treat a movie missing its poster, cast or duration as stale regardless of age: an empty
+  // result more often means a past fetch failed (rate limit, momentary network issue, or — for
+  // duration specifically — a movie added via the Wikipedia source, which never reports one on
+  // its own, see below) than that the source genuinely has nothing, so it's worth retrying on
+  // the next view rather than sitting incomplete forever (a NULL duration would otherwise make
+  // this movie silently drop out of any total-watch-time stat for good).
+  const isIncomplete = movie && (!movie.poster || !movie.backdrop || movie.cast_json === '[]' || !movie.cast_json || !movie.duration);
   const isStale = !movie || isIncomplete || Date.now() - new Date(movie.updated_at + 'Z').getTime() > STALE_MS;
 
   if (isStale) {
@@ -136,10 +139,15 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
       ? await itunes.getMovieDetails(sourceId)
       : await wikipedia.getMovieSummary(sourceId);
     const details = await enrichMovieWithWikidata(baseDetails, { posterOnly });
-    // Skipped when posterOnly: that path exists specifically to be cheap (see movies.js's
-    // poster-healing loop) — platforms/rating aren't shown there, so there's nothing to gain by
-    // spending an extra call on them, and they'll be filled in on the next full view regardless.
-    const jw = posterOnly ? null : await findJustWatchInfo(details.title, 'MOVIE');
+    // Fetched even when posterOnly: unlike the Wikidata cast/rating/next-installment calls that
+    // flag skips (each its own rate-limit-prone round trip — see movies.js's poster-healing loop
+    // comment), JustWatch has been reliable and cheap (one call) throughout, and it's also the
+    // only source of duration for a Wikipedia-sourced movie — skipping it here would mean a movie
+    // healed through this path keeps a NULL duration until someone happens to open its detail page.
+    const jw = await findJustWatchInfo(details.title, 'MOVIE');
+    // Wikipedia's own summary never reports a runtime (see getMovieSummary) — JustWatch's does,
+    // so it's the only fallback available for anything not sourced from iTunes.
+    if (!details.duration && jw?.runtime) details.duration = jw.runtime;
 
     const upsert = db.prepare(`
       INSERT INTO movies (source, source_id, title, poster, backdrop, synopsis, duration, note, genres, release_date, platform, cast_json, next_installment_json, jw_platforms, jw_score, jw_url, updated_at)
