@@ -102,6 +102,22 @@ export async function getCastAndRating(wikibaseItem) {
   return { cast: cast.slice(0, 20), rating };
 }
 
+// AlloCiné person ID (P1266) — the link that lets an actor's page pull a complete filmography
+// from AlloCiné (see allocine.js) using the Wikidata person we already resolved, instead of
+// AlloCiné's own name search (no stable public endpoint for that at all).
+export async function getAllocineId(wikibaseItem) {
+  if (!wikibaseItem) return null;
+  const url = new URL(API_ENDPOINT);
+  url.searchParams.set('action', 'wbgetclaims');
+  url.searchParams.set('entity', wikibaseItem);
+  url.searchParams.set('property', 'P1266');
+  url.searchParams.set('format', 'json');
+  const resp = await fetchWithRetry(url, { headers: HEADERS });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  return data.claims?.P1266?.[0]?.mainsnak?.datavalue?.value || null;
+}
+
 export async function getPoster(wikibaseItem) {
   if (!wikibaseItem) return null;
   const url = new URL(API_ENDPOINT);
