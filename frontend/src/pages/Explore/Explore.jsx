@@ -165,9 +165,10 @@ function JustWatchRow({ title, items }) {
   );
 }
 
-// Genre browsing (like Netflix's "Action", "Comédie"…) only makes sense once a media type is
-// picked — series/anime genres (TVmaze) and movie genres (JustWatch) are different vocabularies.
-const GENRE_MEDIA_TYPE = { serie: 'tv', anime: 'tv', movie: 'movie' };
+// Genre browsing (like Netflix's "Action", "Comédie"…) needs to know which vocabulary to use —
+// series/anime genres (TVmaze) and movie genres (JustWatch) are different lists. On "Tout", there's
+// no single obvious choice, so it defaults to TV/anime genres (the most common two of the three).
+const GENRE_MEDIA_TYPE = { all: 'tv', serie: 'tv', anime: 'tv', movie: 'movie' };
 
 export default function Explore() {
   const [tab, setTab] = useState('all');
@@ -177,7 +178,6 @@ export default function Explore() {
   const [genres, setGenres] = useState(null);
   const [selectedGenre, setSelectedGenre] = useState(null);
   const [genreResults, setGenreResults] = useState(null);
-  const genreScrollRef = useWheelToHorizontalScroll();
 
   useEffect(() => {
     api.get('/explore/trending').then(setCategories).catch(() => setCategories({}));
@@ -227,37 +227,34 @@ export default function Explore() {
         className="w-full rounded-lg bg-base-800 border border-base-600 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
       />
 
-      <div className="flex bg-base-800 rounded-lg p-0.5 border border-base-700 w-fit">
-        {[['all', 'Tout'], ['serie', 'Séries'], ['anime', 'Animes'], ['movie', 'Films']].map(([v, label]) => (
-          <button
-            key={v}
-            onClick={() => setTab(v)}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-              tab === v ? 'bg-accent-600 text-white' : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {!query.trim() && genres && (
-        <div ref={genreScrollRef} className="scroll-row flex gap-2 overflow-x-auto">
-          {genres.map((g) => (
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex bg-base-800 rounded-lg p-0.5 border border-base-700 w-fit">
+          {[['all', 'Tout'], ['serie', 'Séries'], ['anime', 'Animes'], ['movie', 'Films']].map(([v, label]) => (
             <button
-              key={g.value}
-              onClick={() => setSelectedGenre(selectedGenre === g.value ? null : g.value)}
-              className={`shrink-0 text-xs rounded-full px-3 py-1.5 font-medium border ${
-                selectedGenre === g.value
-                  ? 'bg-accent-600 border-accent-600 text-white'
-                  : 'bg-base-800 border-base-700 text-gray-400 hover:text-gray-200'
+              key={v}
+              onClick={() => setTab(v)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                tab === v ? 'bg-accent-600 text-white' : 'text-gray-400 hover:text-gray-200'
               }`}
             >
-              {g.label}
+              {label}
             </button>
           ))}
         </div>
-      )}
+
+        {!query.trim() && genres && (
+          <select
+            value={selectedGenre || ''}
+            onChange={(e) => setSelectedGenre(e.target.value || null)}
+            className="bg-base-800 border border-base-600 rounded-lg text-xs px-3 py-2 text-gray-300 focus:outline-none focus:ring-2 focus:ring-accent-500"
+          >
+            <option value="">Recommandé par genre…</option>
+            {genres.map((g) => (
+              <option key={g.value} value={g.value}>{g.label}</option>
+            ))}
+          </select>
+        )}
+      </div>
 
       {query.trim() ? (
         <section>
