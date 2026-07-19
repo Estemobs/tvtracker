@@ -159,6 +159,25 @@ export async function searchMovies(query) {
   });
 }
 
+function normalizeTitle(title) {
+  return (title || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+// Explorer's Top10/Nouveautés pass JustWatch's own title string, which doesn't always match
+// Wikipedia's search ranking for that string — the "closest sounding" result Wikipedia's fuzzy
+// search puts first isn't necessarily the film itself (this is what previously resolved "The
+// Backrooms" to an unrelated "The Mandalorian and Grogu" that merely mentioned "film" up front —
+// see git history). Preferring an exact (accent/case-insensitive) title match among *all*
+// film-like candidates, not just whichever one the search ranked first, catches most of what
+// blind-first-result missed while keeping the single-candidate cost for the common case where the
+// first result already is the right one.
+function pickBestMatch(candidates, query, titleOf) {
+  if (!candidates.length) return null;
+  const target = normalizeTitle(query);
+  const exact = candidates.find((c) => normalizeTitle(titleOf(c)) === target);
+  return exact || candidates[0];
+}
+
 // A trimmed-down searchMoviesAnyLanguage for callers (like Explorer's click-to-resolve) who only
 // ever use the first/best match: searchMovies resolves the missing-poster fallback for *every*
 // result in the list, which is exactly right for a search results grid but wasted work — several
@@ -166,7 +185,8 @@ export async function searchMovies(query) {
 // the one match that's actually needed is what makes a single click fast.
 export async function findMovieBestMatch(query) {
   const pages = await searchPages('https://fr.wikipedia.org', query);
-  const page = pages.find(looksLikeFilm);
+  const candidates = pages.filter(looksLikeFilm);
+  const page = pickBestMatch(candidates, query, (p) => cleanTitle(p.title));
   if (page) {
     let poster = upscaleThumbnail(page.thumbnail?.url);
     if (!poster) poster = await resolveMissingPoster(page.key).catch(() => null);
@@ -182,7 +202,7 @@ export async function findMovieBestMatch(query) {
     };
   }
   const englishMatches = await searchMoviesEnglishFallback(query).catch(() => []);
-  return englishMatches[0] || null;
+  return pickBestMatch(englishMatches, query, (m) => m.title);
 }
 
 export async function getMovieSummary(sourceId) {
