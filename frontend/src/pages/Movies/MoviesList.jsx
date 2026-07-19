@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api } from '../../api/client.js';
+import PosterCard from '../../components/PosterCard.jsx';
 import { PosterGridSkeleton } from '../../components/Skeleton.jsx';
 
 export default function MoviesList() {
@@ -16,11 +16,16 @@ export default function MoviesList() {
     api.get(`/movies?${params}`).then(setMovies).catch(() => setMovies([]));
   }, [filter, sort]);
 
-  const toggle = async (movie, e) => {
-    e.preventDefault();
+  const toggle = async (movie) => {
     const newStatus = movie.status === 'watched' ? 'to_watch' : 'watched';
     setMovies((prev) => prev.map((m) => (m.movie_id === movie.movie_id ? { ...m, status: newStatus } : m)));
     await api.patch(`/movies/${movie.movie_id}/status`, { status: newStatus });
+  };
+
+  const remove = async (movie) => {
+    if (!confirm('Supprimer ce film de votre liste ?')) return;
+    setMovies((prev) => prev.filter((m) => m.movie_id !== movie.movie_id));
+    await api.delete(`/movies/${movie.movie_id}`);
   };
 
   return (
@@ -59,24 +64,15 @@ export default function MoviesList() {
       ) : (
         <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {movies.map((m) => (
-            <Link key={m.movie_id} to={`/films/${m.movie_id}`} className="group flex flex-col gap-2">
-              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
-                {m.poster ? (
-                  <img src={m.poster} alt={m.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs p-2 text-center">{m.title}</div>
-                )}
-                <button
-                  onClick={(e) => toggle(m, e)}
-                  className={`absolute bottom-1.5 right-1.5 text-[10px] px-2 py-1 rounded-full font-medium ${
-                    m.status === 'watched' ? 'bg-green-600 text-white' : 'bg-base-900/80 text-gray-200'
-                  }`}
-                >
-                  {m.status === 'watched' ? 'Vu ✓' : 'À voir'}
-                </button>
-              </div>
-              <div className="text-sm font-medium truncate">{m.title}</div>
-            </Link>
+            <PosterCard
+              key={m.movie_id}
+              to={`/films/${m.movie_id}`}
+              title={m.title}
+              poster={m.poster}
+              watched={m.status === 'watched'}
+              onToggleWatched={() => toggle(m)}
+              onRemove={() => remove(m)}
+            />
           ))}
         </div>
       )}

@@ -18,6 +18,18 @@ export default function SeriesList() {
     api.get(`/shows?${params}`).then(setShows).catch(() => setShows([]));
   }, [filter, type, sort]);
 
+  const markComplete = async (show) => {
+    if (show.status === 'completed') return;
+    setShows((prev) => prev.map((s) => (s.show_id === show.show_id ? { ...s, status: 'completed' } : s)));
+    await api.post(`/shows/${show.show_id}/mark-complete`);
+  };
+
+  const removeShow = async (show) => {
+    if (!confirm('Supprimer cette série de votre liste ? Votre progression sera perdue.')) return;
+    setShows((prev) => prev.filter((s) => s.show_id !== show.show_id));
+    await api.delete(`/shows/${show.show_id}`);
+  };
+
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-bold">Séries & Animes</h1>
@@ -55,6 +67,9 @@ export default function SeriesList() {
               progressPercent={s.progress.percent}
               subtitle={`${s.progress.watched}/${s.progress.total} épisodes`}
               badge={s.type === 'anime' ? 'Anime' : undefined}
+              watched={s.status === 'completed'}
+              onToggleWatched={() => markComplete(s)}
+              onRemove={() => removeShow(s)}
             />
           ))}
         </div>

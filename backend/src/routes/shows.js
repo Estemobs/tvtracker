@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { cacheShow } from '../services/catalog.js';
 import * as tvmaze from '../services/tvmaze.js';
 import { translateToFrench } from '../services/translate.js';
+import { mapWithLimit } from '../services/httpRetry.js';
 
 // TVmaze synopses are always in English; only that direction needs translating for
 // the French-language preference (Wikipedia/iTunes movie summaries are already fetched in French).
@@ -30,13 +31,21 @@ function showProgress(userId, showId) {
   return { watched, total };
 }
 
-// Same reasoning as movies.js's healPosterInBackground: the list must stay instant, but a show
-// missing its poster should still heal on its own rather than waiting for someone to open it.
+// Same reasoning as movies.js's healPostersInBackground: the list must stay instant, but a show
+// missing its poster should still heal on its own rather than waiting for someone to open it —
+// and, just like there, firing every poster-less show's re-fetch at once was enough of a burst to
+// trip TVmaze/Wikidata's rate limiter and stall every other in-flight request for the duration of
+// the cooldown. Throttled the same way here too.
 const healingShows = new Set();
-function healPosterInBackground(sourceId) {
-  if (healingShows.has(sourceId)) return;
-  healingShows.add(sourceId);
-  cacheShow(sourceId).finally(() => healingShows.delete(sourceId));
+async function healPostersInBackground(sourceIds) {
+  const toHeal = sourceIds.filter((id) => !healingShows.has(id));
+  if (!toHeal.length) return;
+  for (const id of toHeal) healingShows.add(id);
+  try {
+    await mapWithLimit(toHeal, 2, (id) => cacheShow(id).catch(() => {}));
+  } finally {
+    for (const id of toHeal) healingShows.delete(id);
+  }
 }
 
 router.get('/', (req, res) => {
@@ -47,9 +56,7 @@ router.get('/', (req, res) => {
     WHERE us.user_id = ?
   `).all(req.user.id);
 
-  for (const r of rows) {
-    if (!r.poster) healPosterInBackground(r.source_id);
-  }
+  void healPostersInBackground(rows.filter((r) => !r.poster).map((r) => r.source_id));
 
   rows = rows.map((r) => {
     const progress = showProgress(req.user.id, r.show_id);
