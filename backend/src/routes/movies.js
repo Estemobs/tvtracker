@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { cacheMovie } from '../services/catalog.js';
+import { mapWithLimit } from '../services/httpRetry.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -12,12 +13,23 @@ router.use(requireAuth);
 // for any row still missing a poster; it'll show up correctly on the next load instead. The
 // in-flight set just avoids piling up duplicate fetches if the list is reloaded again before
 // the first one finishes.
+//
+// Two things this deliberately avoids, both of which turned "open the movie list" into "every
+// other Wikipedia-backed feature on the site stalls for the next 20-30s": posterOnly skips the
+// cast/rating/next-installment enrichment this view never shows anyway (each of those is its own
+// Wikidata round trip); mapWithLimit spreads the re-fetches out instead of firing all of a list's
+// poster-less movies at Wikipedia/Wikidata simultaneously, which was enough of a burst to trip
+// their rate limiter and jam the shared per-host cooldown for every other request in flight.
 const healingMovies = new Set();
-function healPosterInBackground(source, sourceId) {
-  const key = `${source}:${sourceId}`;
-  if (healingMovies.has(key)) return;
-  healingMovies.add(key);
-  cacheMovie(source, sourceId).finally(() => healingMovies.delete(key));
+async function healPostersInBackground(rows) {
+  const toHeal = rows.filter((r) => !r.poster && !healingMovies.has(`${r.source}:${r.source_id}`));
+  if (!toHeal.length) return;
+  for (const r of toHeal) healingMovies.add(`${r.source}:${r.source_id}`);
+  try {
+    await mapWithLimit(toHeal, 2, (r) => cacheMovie(r.source, r.source_id, { posterOnly: true }).catch(() => {}));
+  } finally {
+    for (const r of toHeal) healingMovies.delete(`${r.source}:${r.source_id}`);
+  }
 }
 
 router.get('/', (req, res) => {
@@ -25,9 +37,7 @@ router.get('/', (req, res) => {
   let rows = db.prepare(`SELECT um.*, m.* , um.status as user_status, m.id as movie_id
     FROM user_movies um JOIN movies m ON m.id = um.movie_id WHERE um.user_id = ?`).all(req.user.id);
 
-  for (const r of rows) {
-    if (!r.poster) healPosterInBackground(r.source, r.source_id);
-  }
+  void healPostersInBackground(rows);
 
   rows = rows.map((r) => ({
     movie_id: r.movie_id,
