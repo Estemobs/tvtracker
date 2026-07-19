@@ -34,8 +34,9 @@ export default function SeriesDetail() {
   });
 
   useEffect(() => { load(); }, [showId]);
+  const loadingSeconds = useElapsedSeconds(!show);
 
-  if (!show) return <p className="text-gray-400 text-sm">Chargement…</p>;
+  if (!show) return <LoadingProgress seconds={loadingSeconds} />;
 
   const totalEpisodes = show.seasons.reduce((acc, s) => acc + s.episodes.length, 0);
   const watchedEpisodes = show.seasons.reduce((acc, s) => acc + s.episodes.filter((e) => e.watched).length, 0);
