@@ -26,19 +26,29 @@ function dedupe(results) {
   });
 }
 
+// Beyond the plain already_added flag, this now also surfaces the internal show_id/movie_id and
+// the user's current status for anything already in their list — quick-add/remove/mark-watched
+// hover actions on a search result need that id to call the same routes the list pages use
+// (DELETE /shows/:showId, PATCH /movies/:movieId/status, ...), which a bare source/source_id
+// can't address.
 function annotateAdded(req, results) {
-  const showKeys = new Set(
-    db.prepare(`SELECT source, source_id FROM shows s JOIN user_shows us ON us.show_id = s.id WHERE us.user_id = ?`)
-      .all(req.user.id).map((r) => `${r.source}:${r.source_id}`)
+  const showMap = new Map(
+    db.prepare(`SELECT s.source, s.source_id, s.id, us.status FROM shows s JOIN user_shows us ON us.show_id = s.id WHERE us.user_id = ?`)
+      .all(req.user.id).map((r) => [`${r.source}:${r.source_id}`, { id: r.id, status: r.status }])
   );
-  const movieKeys = new Set(
-    db.prepare(`SELECT source, source_id FROM movies m JOIN user_movies um ON um.movie_id = m.id WHERE um.user_id = ?`)
-      .all(req.user.id).map((r) => `${r.source}:${r.source_id}`)
+  const movieMap = new Map(
+    db.prepare(`SELECT m.source, m.source_id, m.id, um.status FROM movies m JOIN user_movies um ON um.movie_id = m.id WHERE um.user_id = ?`)
+      .all(req.user.id).map((r) => [`${r.source}:${r.source_id}`, { id: r.id, status: r.status }])
   );
-  return results.map((r) => ({
-    ...r,
-    already_added: (r.media_type === 'movie' ? movieKeys : showKeys).has(`${r.source}:${r.source_id}`),
-  }));
+  return results.map((r) => {
+    const match = (r.media_type === 'movie' ? movieMap : showMap).get(`${r.source}:${r.source_id}`);
+    return {
+      ...r,
+      already_added: !!match,
+      list_id: match?.id ?? null,
+      list_status: match?.status ?? null,
+    };
+  });
 }
 
 router.get('/search', async (req, res, next) => {

@@ -22,7 +22,53 @@ function useWheelToHorizontalScroll() {
   return ref;
 }
 
+// Quick actions on hover, same idea as PosterCard on the "Mes séries"/"Mes films" lists: add
+// straight from a search/genre result without opening its detail page, and once added, mark
+// watched or remove the same way — no full page round-trip either way.
 function Poster({ r }) {
+  const [state, setState] = useState({ added: r.already_added, id: r.list_id, status: r.list_status });
+  const [busy, setBusy] = useState(false);
+  const stop = (fn) => (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+
+  const add = async () => {
+    setBusy(true);
+    try {
+      const data = r.media_type === 'movie'
+        ? await api.post('/movies', { source: r.source, source_id: r.source_id })
+        : await api.post('/shows', { source_id: r.source_id });
+      setState({ added: true, id: data.movie_id ?? data.show_id, status: null });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleWatched = async () => {
+    setBusy(true);
+    try {
+      if (r.media_type === 'movie') {
+        const newStatus = state.status === 'watched' ? 'to_watch' : 'watched';
+        await api.patch(`/movies/${state.id}/status`, { status: newStatus });
+        setState((s) => ({ ...s, status: newStatus }));
+      } else if (state.status !== 'completed') {
+        await api.post(`/shows/${state.id}/mark-complete`);
+        setState((s) => ({ ...s, status: 'completed' }));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!confirm(`Supprimer ${r.title} de votre liste ?`)) return;
+    setBusy(true);
+    try {
+      await api.delete(r.media_type === 'movie' ? `/movies/${state.id}` : `/shows/${state.id}`);
+      setState({ added: false, id: null, status: null });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Link
       to={`/explorer/${r.media_type}/${r.source}/${encodeURIComponent(r.source_id)}`}
@@ -34,7 +80,40 @@ function Poster({ r }) {
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs p-2 text-center">{r.title}</div>
         )}
-        {r.already_added && (
+        <div className="absolute inset-x-0 bottom-0 flex justify-end gap-1.5 p-1.5 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+          {!state.added ? (
+            <button
+              onClick={stop(add)}
+              disabled={busy}
+              title="Ajouter à ma liste"
+              className="w-7 h-7 rounded-full bg-accent-600 hover:bg-accent-500 text-white flex items-center justify-center text-base font-bold shrink-0 disabled:opacity-40"
+            >
+              +
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={stop(toggleWatched)}
+                disabled={busy}
+                title={state.status === 'watched' || state.status === 'completed' ? 'Déjà vu' : 'Marquer comme vu'}
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-colors disabled:opacity-40 ${
+                  state.status === 'watched' || state.status === 'completed' ? 'bg-green-600 text-white' : 'bg-black/70 text-gray-200 hover:bg-accent-600'
+                }`}
+              >
+                ✓
+              </button>
+              <button
+                onClick={stop(remove)}
+                disabled={busy}
+                title="Supprimer de ma liste"
+                className="w-7 h-7 rounded-full bg-black/70 text-gray-200 hover:bg-red-600 hover:text-white flex items-center justify-center text-sm shrink-0 disabled:opacity-40"
+              >
+                ✕
+              </button>
+            </>
+          )}
+        </div>
+        {state.added && (
           <span className="absolute top-1.5 right-1.5 bg-green-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
             Déjà ajouté
           </span>
