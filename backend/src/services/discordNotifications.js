@@ -5,6 +5,7 @@ const DISCORD_WEBHOOK_RE = /^https:\/\/(?:canary\.)?(?:discord(?:app)?\.com)\/ap
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 const MESSAGE_MAX_LENGTH = 300;
 const PLACEHOLDER_RE = /\{(titre|saison|numero|episode|date)\}/g;
+const MENTION_RE = /<@[!&]?\d+>|@everyone|@here/g;
 
 export const DEFAULT_MESSAGE_TEMPLATE = 'Nouvel épisode disponible pour {titre} : {episode}';
 
