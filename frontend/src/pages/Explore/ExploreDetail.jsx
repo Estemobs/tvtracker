@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import ActorModal from '../../components/ActorModal.jsx';
 import ExpandableText from '../../components/ExpandableText.jsx';
+import { LoadingProgress, useElapsedSeconds } from '../../components/LoadingProgress.jsx';
 
 const DAYS_FR = {
   Monday: 'Lun.', Tuesday: 'Mar.', Wednesday: 'Mer.', Thursday: 'Jeu.',
@@ -31,6 +32,7 @@ export default function ExploreDetail() {
   };
 
   useEffect(load, [mediaType, source, sourceId]);
+  const loadingSeconds = useElapsedSeconds(!details && !error);
 
   if (error) {
     return (
@@ -42,7 +44,7 @@ export default function ExploreDetail() {
       </div>
     );
   }
-  if (!details) return <p className="text-gray-400 text-sm">Chargement…</p>;
+  if (!details) return <LoadingProgress seconds={loadingSeconds} />;
 
   const addToList = async () => {
     setAdding(true);
