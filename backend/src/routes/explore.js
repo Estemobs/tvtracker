@@ -7,6 +7,7 @@ import * as wikidata from '../services/wikidata.js';
 import * as justwatch from '../services/justwatch.js';
 import { enrichMovieWithWikidata } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
+import { bulkImportContext } from '../services/httpRetry.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -52,6 +53,23 @@ router.get('/search', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Resolving a whole batch of JustWatch titles via Promise.all fires them at Wikipedia/TVmaze all
+// at once — Wikipedia's rate limiter trips on that burst, and httpRetry's per-host circuit breaker
+// then makes every other in-flight search in the same batch fail too (see httpRetry.js), not just
+// the one that got rate-limited. A small concurrency cap avoids ever triggering it in the first place.
+async function mapWithLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 // JustWatch only knows titles, not this app's TVmaze/Wikipedia ids — a JustWatch ranking is
 // resolved back into our own catalog via the same title search already used by /search, so the
 // result links, posters and "already_added" flag all behave exactly like everywhere else in the
@@ -60,7 +78,7 @@ router.get('/search', async (req, res, next) => {
 // itself), so for the anime category the classification already done upstream — JustWatch's
 // "Animation" genre restricted to Japanese productions — is the more reliable signal.
 async function resolveJustWatchItems(jwItems, resolver, { forceType, limit = 10 } = {}) {
-  const resolved = await Promise.all(jwItems.map(async (jw) => {
+  const resolved = await mapWithLimit(jwItems, 4, async (jw) => {
     try {
       const matches = await resolver(jw.title);
       const match = matches[0];
@@ -69,7 +87,7 @@ async function resolveJustWatchItems(jwItems, resolver, { forceType, limit = 10 
     } catch {
       return null;
     }
-  }));
+  });
   return dedupe(resolved.filter(Boolean)).slice(0, limit);
 }
 
@@ -109,7 +127,9 @@ router.get('/trending', async (req, res, next) => {
   try {
     if (!trendingCache.data || Date.now() > trendingCache.expiresAt) {
       try {
-        trendingCache = { data: await buildTrendingCategories(), expiresAt: Date.now() + TRENDING_CACHE_MS };
+        // Nobody is waiting on a spinner for this (it's cached for an hour) — opt into the full
+        // rate-limit backoff instead of the short interactive cap, same as the TV Time import.
+        trendingCache = { data: await bulkImportContext.run(true, buildTrendingCategories), expiresAt: Date.now() + TRENDING_CACHE_MS };
       } catch (error) {
         // JustWatch is an unofficial, undocumented API — if it's down or its schema shifted,
         // fall back to serving the last good ranking rather than a broken Explorer page.
