@@ -150,6 +150,32 @@ export async function searchMovies(query) {
   });
 }
 
+// A trimmed-down searchMoviesAnyLanguage for callers (like Explorer's click-to-resolve) who only
+// ever use the first/best match: searchMovies resolves the missing-poster fallback for *every*
+// result in the list, which is exactly right for a search results grid but wasted work — several
+// extra Wikidata calls apiece — for candidates that were never going to be shown. Resolving only
+// the one match that's actually needed is what makes a single click fast.
+export async function findMovieBestMatch(query) {
+  const pages = await searchPages('https://fr.wikipedia.org', query);
+  const page = pages.find(looksLikeFilm);
+  if (page) {
+    let poster = upscaleThumbnail(page.thumbnail?.url);
+    if (!poster) poster = await resolveMissingPoster(page.key).catch(() => null);
+    return {
+      source: 'wikipedia',
+      source_id: page.key,
+      media_type: 'movie',
+      type: 'movie',
+      title: cleanTitle(page.title),
+      poster,
+      year: extractYear(page.description, page.title),
+      note: null,
+    };
+  }
+  const englishMatches = await searchMoviesEnglishFallback(query).catch(() => []);
+  return englishMatches[0] || null;
+}
+
 export async function getMovieSummary(sourceId) {
   const data = await getSummary('https://fr.wikipedia.org', sourceId);
   if (!data) {

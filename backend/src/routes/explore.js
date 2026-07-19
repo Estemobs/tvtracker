@@ -60,7 +60,7 @@ router.get('/search', async (req, res, next) => {
 // nothing for minutes at a time. JustWatch already gives us a title, a poster (its own CDN, see
 // posterUrl in justwatch.js) and platforms — enough to render the page with zero TVmaze/Wikipedia
 // calls. Resolving a title to this app's catalog now only happens for the *one* title someone
-// actually clicks, via GET /explore/resolve below — see resolveShow/resolveMovie there.
+// actually clicks, via GET /explore/resolve below.
 function formatJustWatchItems(jwItems, { mediaType, type }) {
   return jwItems.slice(0, 10).map((jw) => ({
     jw_title: jw.title,
@@ -75,17 +75,21 @@ function formatJustWatchItems(jwItems, { mediaType, type }) {
 }
 
 const resolveShow = (title) => tvmaze.searchShows(title);
-const resolveMovie = (title) => wikipedia.searchMoviesAnyLanguage(title);
 
 // Resolves a single title someone clicked on in a Top10/Nouveautés row into this app's own
 // catalog entry (source/source_id/poster/...), the same way /search already does — just for one
 // item at a time, at the pace of actual clicks, instead of a whole category at once.
+//
+// Movies use findMovieBestMatch, not resolveMovie/searchMoviesAnyLanguage: that function resolves
+// a poster for every candidate in the results list (right for the /search grid), but here only
+// the first match is ever shown — resolving the rest was pure wasted latency (and Wikidata load)
+// on every single click, which is what made opening a movie feel slow next to a show/anime (TVmaze
+// resolves a show in one call; the old movie path could easily be five times that).
 router.get('/resolve', async (req, res, next) => {
   try {
     const { title, media_type: mediaType } = req.query;
     if (!title || !['tv', 'movie'].includes(mediaType)) return res.status(400).json({ error: 'Paramètres invalides.' });
-    const matches = mediaType === 'tv' ? await resolveShow(title) : await resolveMovie(title);
-    const match = matches[0];
+    const match = mediaType === 'tv' ? (await resolveShow(title))[0] : await wikipedia.findMovieBestMatch(title);
     if (!match) return res.status(404).json({ error: 'Introuvable dans le catalogue.' });
     res.json(annotateAdded(req, [match])[0]);
   } catch (e) { next(e); }
