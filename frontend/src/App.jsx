@@ -11,11 +11,13 @@ import Explore from './pages/Explore/Explore.jsx';
 import ExploreDetail from './pages/Explore/ExploreDetail.jsx';
 import Profile from './pages/Profile/Profile.jsx';
 import Admin from './pages/Admin/Admin.jsx';
+import { LoadingProgress, useElapsedSeconds } from './components/LoadingProgress.jsx';
 
 function FullScreenLoader() {
+  const seconds = useElapsedSeconds(true);
   return (
-    <div className="h-screen flex items-center justify-center text-gray-400">
-      Chargement…
+    <div className="h-screen flex items-center justify-center">
+      <LoadingProgress seconds={seconds} />
     </div>
   );
 }

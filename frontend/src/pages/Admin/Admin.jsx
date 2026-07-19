@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
+import { LoadingProgress, useElapsedSeconds } from '../../components/LoadingProgress.jsx';
 
 export default function Admin() {
   const [pending, setPending] = useState(null);
@@ -30,6 +31,9 @@ export default function Admin() {
     const data = await api.post('/admin/movies/backfill-durations');
     setMovieBackfill({ count: data.count, running: data.count > 0 });
   };
+
+  const pendingLoadingSeconds = useElapsedSeconds(pending === null);
+  const usersLoadingSeconds = useElapsedSeconds(users === null);
 
   // While debug mode is on, poll the log buffer so it's usable as a live view: enable it, then
   // go reproduce the issue elsewhere in the app and come back to see what happened.
@@ -72,7 +76,7 @@ export default function Admin() {
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-gray-400">Inscriptions en attente ({pending?.length ?? 0})</h2>
         {pending === null ? (
-          <p className="text-sm text-gray-500">Chargement…</p>
+          <LoadingProgress seconds={pendingLoadingSeconds} />
         ) : pending.length === 0 ? (
           <p className="text-sm text-gray-500">Aucune demande en attente.</p>
         ) : (
@@ -96,7 +100,7 @@ export default function Admin() {
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-gray-400">Utilisateurs ({users?.length ?? 0})</h2>
         {users === null ? (
-          <p className="text-sm text-gray-500">Chargement…</p>
+          <LoadingProgress seconds={usersLoadingSeconds} />
         ) : (
           <div className="space-y-2">
             {users.map((u) => (
