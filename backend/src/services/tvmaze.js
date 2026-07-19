@@ -171,7 +171,9 @@ export async function getPersonFilmography(personId) {
     if (!show || seen.has(show.id)) continue;
     seen.add(show.id);
     credits.push({
+      source: 'tvmaze',
       source_id: String(show.id),
+      media_type: 'tv',
       title: show.name,
       poster: show.image?.medium || show.image?.original || null,
       character: credit._links?.character?.name || null,

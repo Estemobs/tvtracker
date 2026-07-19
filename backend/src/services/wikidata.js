@@ -204,5 +204,18 @@ export async function getPersonFilmography(personId) {
     seenFilms.add(wikibaseItem);
     films.push({ wikibase_item: wikibaseItem, title: r.filmLabel.value, year: r.date?.value?.slice(0, 4) || null });
   }
-  return films.sort((a, b) => (b.year || '').localeCompare(a.year || ''));
+  films.sort((a, b) => (b.year || '').localeCompare(a.year || ''));
+
+  // A bare {wikibase_item, title, year} can't be turned into a poster+link the way TVmaze's
+  // castcredits already can — resolve each film to the French Wikipedia article title this app
+  // uses as `source_id` for source='wikipedia' movies (see catalog.js/routes/explore.js), plus
+  // a poster, so the frontend can render/link it exactly like a TV credit.
+  const resolved = await Promise.all(films.map(async (film) => {
+    const [sourceId, poster] = await Promise.all([
+      getFrenchSitelink(film.wikibase_item).catch(() => null),
+      getPoster(film.wikibase_item).catch(() => null),
+    ]);
+    return { ...film, source: sourceId ? 'wikipedia' : null, source_id: sourceId, media_type: 'movie', poster };
+  }));
+  return resolved;
 }

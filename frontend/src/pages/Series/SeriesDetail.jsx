@@ -9,6 +9,14 @@ const DAYS_FR = {
   Friday: 'Ven.', Saturday: 'Sam.', Sunday: 'Dim.',
 };
 
+// TVMaze's own `status` field (passed through verbatim as air_status): only 'Ended' means the
+// show is actually over. 'Running' covers a show between seasons/episodes just as much as one
+// mid-season, so it must never be conflated with "completed" elsewhere in this page.
+const AIR_STATUS_FR = {
+  Running: 'En cours', Ended: 'Terminée', 'To Be Determined': 'Indéterminé',
+  'In Development': 'En développement', Pilot: 'Pilote',
+};
+
 export default function SeriesDetail() {
   const { showId } = useParams();
   const navigate = useNavigate();
@@ -87,7 +95,7 @@ export default function SeriesDetail() {
           <div className="text-xs text-gray-400 mt-1 flex flex-wrap gap-x-2">
             <span>{show.genres.join(', ')}</span>
             {show.note && <span>· ⭐ {show.note.toFixed(1)}</span>}
-            <span>· {show.air_status}</span>
+            {show.air_status && <span>· {AIR_STATUS_FR[show.air_status] || show.air_status}</span>}
           </div>
           <div className="mt-2">
             <div className="h-1.5 w-full bg-base-700 rounded-full overflow-hidden">
@@ -104,7 +112,9 @@ export default function SeriesDetail() {
           disabled={busy || show.status === 'completed'}
           className="bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-sm rounded-lg px-3 py-2 font-medium"
         >
-          {show.status === 'completed' ? 'Terminée ✓' : 'Marquer comme complètement vue'}
+          {show.status === 'completed'
+            ? (show.air_status === 'Ended' ? 'Terminée ✓' : 'À jour ✓')
+            : 'Marquer comme complètement vue'}
         </button>
         <button
           onClick={removeShow}

@@ -45,16 +45,13 @@ export default function ActorModal({ personId, onClose }) {
 
             {actor.filmography?.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-gray-400 mb-2">Filmographie</h3>
-                {actor.filmography[0]?.source_id ? (
-                  <div className="grid grid-cols-3 xs:grid-cols-4 gap-3">
-                    {actor.filmography.map((f) => (
-                      <Link
-                        key={f.source_id}
-                        to={`/explorer/tv/tvmaze/${f.source_id}`}
-                        onClick={onClose}
-                        className="flex flex-col gap-1"
-                      >
+                <h3 className="text-sm font-semibold text-gray-400 mb-2">
+                  Filmographie <span className="text-gray-500 font-normal">({actor.filmography.length})</span>
+                </h3>
+                <div className="grid grid-cols-3 xs:grid-cols-4 gap-3">
+                  {actor.filmography.map((f, i) => {
+                    const card = (
+                      <>
                         <div className="aspect-[2/3] rounded-lg overflow-hidden bg-base-800">
                           {f.poster ? (
                             <img src={f.poster} alt={f.title} loading="lazy" className="w-full h-full object-cover" />
@@ -63,19 +60,27 @@ export default function ActorModal({ personId, onClose }) {
                           )}
                         </div>
                         <div className="text-[11px] truncate">{f.title}</div>
+                        {f.year && <div className="text-[10px] text-gray-500">{f.year}</div>}
+                      </>
+                    );
+                    // A film whose Wikidata entry couldn't be resolved to a Wikipedia article (no
+                    // French sitelink) has no `source_id` to link to — still shown, just not clickable.
+                    return f.source_id ? (
+                      <Link
+                        key={`${f.source}-${f.source_id}`}
+                        to={`/explorer/${f.media_type}/${f.source}/${encodeURIComponent(f.source_id)}`}
+                        onClick={onClose}
+                        className="flex flex-col gap-1"
+                      >
+                        {card}
                       </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <ul className="text-sm text-gray-300 space-y-1">
-                    {actor.filmography.map((f, i) => (
-                      <li key={i} className="flex justify-between">
-                        <span className="truncate">{f.title}</span>
-                        {f.year && <span className="text-gray-500 shrink-0 ml-2">{f.year}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                    ) : (
+                      <div key={i} className="flex flex-col gap-1 opacity-60">
+                        {card}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
