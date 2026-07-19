@@ -6,13 +6,30 @@ export default function Admin() {
   const [users, setUsers] = useState(null);
   const [debug, setDebug] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [movieBackfill, setMovieBackfill] = useState(null);
 
   const load = () => {
     api.get('/admin/users/pending').then(setPending);
     api.get('/admin/users').then(setUsers);
     api.get('/admin/debug').then(setDebug);
+    api.get('/admin/movies/missing-duration-count').then(setMovieBackfill);
   };
   useEffect(() => { load(); }, []);
+
+  // While a backfill is running, poll the remaining count so the button's own label tracks
+  // progress without needing the debug panel open.
+  useEffect(() => {
+    if (!movieBackfill?.running) return;
+    const handle = setInterval(() => {
+      api.get('/admin/movies/missing-duration-count').then(setMovieBackfill);
+    }, 4000);
+    return () => clearInterval(handle);
+  }, [movieBackfill?.running]);
+
+  const startMovieBackfill = async () => {
+    const data = await api.post('/admin/movies/backfill-durations');
+    setMovieBackfill({ count: data.count, running: data.count > 0 });
+  };
 
   // While debug mode is on, poll the log buffer so it's usable as a live view: enable it, then
   // go reproduce the issue elsewhere in the app and come back to see what happened.
@@ -102,6 +119,29 @@ export default function Admin() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-gray-400">Films sans durée</h2>
+        <p className="text-xs text-gray-500">
+          Corrige les statistiques de temps de visionnage cassées (ex. "0 h 0 min" alors que des films ont
+          été vus) : les films ajoutés via Wikipedia n'ont pas de durée tant qu'ils n'ont pas été réparés.
+          Répare tout le catalogue en une fois plutôt que d'attendre que ça se fasse tout seul au fil des visites.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={startMovieBackfill}
+            disabled={movieBackfill?.running || !movieBackfill?.count}
+            className="bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-xs rounded-lg px-3 py-2 font-medium"
+          >
+            {movieBackfill?.running
+              ? 'Réparation en cours…'
+              : `Réparer les films sans durée (${movieBackfill?.count ?? '…'})`}
+          </button>
+          {movieBackfill?.running && (
+            <span className="text-xs text-gray-500">Active le mode debug ci-dessous pour suivre la progression.</span>
+          )}
+        </div>
       </section>
 
       <section className="space-y-3">

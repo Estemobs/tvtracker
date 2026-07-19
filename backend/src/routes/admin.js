@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { isDebugEnabled, setDebugEnabled, getLogs } from '../services/debugLog.js';
+import { isDebugEnabled, setDebugEnabled, getLogs, log as debugLog } from '../services/debugLog.js';
+import { cacheMovie } from '../services/catalog.js';
+import { mapWithLimit } from '../services/httpRetry.js';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -16,6 +18,39 @@ router.get('/debug', (req, res) => {
 router.post('/debug/toggle', (req, res) => {
   setDebugEnabled(!!req.body?.enabled);
   res.json({ enabled: isDebugEnabled() });
+});
+
+// The list page's own background healing (movies.js) only ever fixes 2 movies per visit — fine
+// for an occasional gap, hopeless for someone with a couple hundred movies imported before
+// `duration` was tracked (or added via the Wikipedia source, which never reported one): at that
+// scale it can take dozens of visits to actually catch up, which reads as "still just broken"
+// rather than "still healing". This runs the same repair across every incomplete movie in the
+// catalog (not just one user's list) in one go, still throttled the same way to stay gentle on
+// Wikipedia/Wikidata. Enable debug mode first (above) to watch it progress.
+let backfillRunning = false;
+router.get('/movies/missing-duration-count', (req, res) => {
+  const { count } = db.prepare(`SELECT COUNT(*) as count FROM movies WHERE duration IS NULL`).get();
+  res.json({ count, running: backfillRunning });
+});
+
+router.post('/movies/backfill-durations', (req, res) => {
+  if (backfillRunning) return res.status(409).json({ error: 'Une réparation est déjà en cours.' });
+  const rows = db.prepare(`SELECT source, source_id FROM movies WHERE duration IS NULL`).all();
+  if (!rows.length) return res.json({ message: 'Aucun film à réparer.', count: 0 });
+
+  backfillRunning = true;
+  debugLog('backfill', `Réparation de ${rows.length} films sans durée démarrée.`);
+  mapWithLimit(rows, 2, async (r) => {
+    try {
+      await cacheMovie(r.source, r.source_id, { posterOnly: true });
+    } catch (error) {
+      debugLog('backfill', `Échec pour ${r.source}:${r.source_id} : ${error.message}`);
+    }
+  })
+    .then(() => debugLog('backfill', `Réparation terminée (${rows.length} films traités).`))
+    .finally(() => { backfillRunning = false; });
+
+  res.json({ message: `Réparation de ${rows.length} films lancée en arrière-plan.`, count: rows.length });
 });
 
 router.get('/users/pending', (req, res) => {
