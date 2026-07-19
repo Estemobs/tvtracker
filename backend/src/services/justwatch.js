@@ -66,6 +66,49 @@ async function fetchTitles(root, { objectType, genres, excludeGenres, production
   }));
 }
 
+// Looks up one specific title by name (not a ranking) to enrich this app's own catalog entries —
+// TVmaze/Wikipedia never say *where* something streams (beyond a single platform mention buried in
+// prose, if that), and neither exposes a rating. JustWatch has both: real per-platform availability
+// and a rating (IMDb's, falling back to TMDB's — JustWatch aggregates several, these two are the
+// ones actually populated in practice), plus its own page as a single "more info" link. Called once
+// per show/movie at cache time (see catalog.js), not per page view.
+export async function findByTitle(title, objectType) {
+  const query = `
+    query FindTitle($country: Country!, $language: Language!, $filter: TitleFilter) {
+      popularTitles(country: $country, first: 1, filter: $filter) {
+        edges {
+          node {
+            content(country: $country, language: $language) {
+              fullPath
+              runtime
+              scoring { imdbScore tmdbScore }
+            }
+            offers(country: $country, platform: WEB) { monetizationType package { clearName } }
+          }
+        }
+      }
+    }
+  `;
+  const resp = await fetchWithRetry(GRAPHQL_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, variables: { country: 'FR', language: 'fr', filter: { objectTypes: [objectType], searchQuery: title } } }),
+  });
+  if (!resp.ok) throw new Error(`Erreur JustWatch (${resp.status})`);
+  const { data, errors } = await resp.json();
+  if (errors?.length) throw new Error(errors[0].message);
+
+  const node = data.popularTitles.edges[0]?.node;
+  if (!node) return null;
+  const score = node.content.scoring?.imdbScore ?? node.content.scoring?.tmdbScore ?? null;
+  return {
+    platforms: extractPlatforms(node.offers),
+    score: score != null ? Math.round(score * 10) / 10 : null,
+    url: node.content.fullPath ? `https://www.justwatch.com${node.content.fullPath}` : null,
+    runtime: node.content.runtime || null,
+  };
+}
+
 // These are shown to the user as-is now (title/poster straight from JustWatch, see explore.js's
 // formatJustWatchItems) rather than being resolved+filtered against TVmaze/Wikipedia first, so
 // `first` only needs a small buffer over the 10 actually displayed, not the large padding a

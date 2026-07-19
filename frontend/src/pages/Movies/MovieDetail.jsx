@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import ActorModal from '../../components/ActorModal.jsx';
 import ExpandableText from '../../components/ExpandableText.jsx';
+import { RatingBadge, PlatformRow } from '../../components/JustWatchInfo.jsx';
 
 export default function MovieDetail() {
   const { movieId } = useParams();
@@ -43,9 +44,9 @@ export default function MovieDetail() {
         {movie.poster && <img src={movie.poster} alt="" className="w-28 rounded-lg shrink-0" />}
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold">{movie.title}</h1>
-          <div className="text-xs text-gray-400 mt-1 flex flex-wrap gap-x-2">
+          <div className="text-xs text-gray-400 mt-1 flex flex-wrap items-center gap-x-2">
             <span>{movie.genres.join(', ')}</span>
-            {movie.note && <span>· ⭐ {movie.note.toFixed(1)}</span>}
+            <RatingBadge score={movie.jw_score ?? movie.note} url={movie.jw_url} />
             {movie.duration && <span>· {movie.duration} min</span>}
             {movie.release_date && <span>· {movie.release_date.slice(0, 4)}</span>}
           </div>
@@ -54,8 +55,9 @@ export default function MovieDetail() {
 
       <ExpandableText text={movie.synopsis} className="text-sm text-gray-300 leading-relaxed" />
 
+      <PlatformRow platforms={movie.jw_platforms} url={movie.jw_url} fallback={movie.platform} />
+
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
-        {movie.platform && <span>📺 Disponible sur {movie.platform}</span>}
         {movie.added_by_count > 0 && (
           <span>👥 Ajouté par {movie.added_by_count} utilisateur{movie.added_by_count > 1 ? 's' : ''}</span>
         )}

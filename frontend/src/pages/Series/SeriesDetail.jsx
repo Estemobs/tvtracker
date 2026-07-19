@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import ActorModal from '../../components/ActorModal.jsx';
 import ExpandableText from '../../components/ExpandableText.jsx';
+import { RatingBadge, PlatformRow } from '../../components/JustWatchInfo.jsx';
 
 const DAYS_FR = {
   Monday: 'Lun.', Tuesday: 'Mar.', Wednesday: 'Mer.', Thursday: 'Jeu.',
@@ -92,9 +93,9 @@ export default function SeriesDetail() {
         {show.poster && <img src={show.poster} alt="" className="w-28 rounded-lg shrink-0" />}
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold">{show.title}</h1>
-          <div className="text-xs text-gray-400 mt-1 flex flex-wrap gap-x-2">
+          <div className="text-xs text-gray-400 mt-1 flex flex-wrap items-center gap-x-2">
             <span>{show.genres.join(', ')}</span>
-            {show.note && <span>· ⭐ {show.note.toFixed(1)}</span>}
+            <RatingBadge score={show.jw_score ?? show.note} url={show.jw_url} />
             {show.air_status && <span>· {AIR_STATUS_FR[show.air_status] || show.air_status}</span>}
           </div>
           <div className="mt-2">
@@ -142,10 +143,11 @@ export default function SeriesDetail() {
         <div className="space-y-5">
           <ExpandableText text={show.synopsis} className="text-sm text-gray-300 leading-relaxed" />
 
+          <PlatformRow platforms={show.jw_platforms} url={show.jw_url} fallback={show.platform} />
+
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
-            {show.platform && <span>📺 Disponible sur {show.platform}</span>}
             {scheduleLabel && <span>📅 {scheduleLabel}</span>}
-            {show.runtime && <span>⏱️ {show.runtime} min</span>}
+            {show.runtime && <span>⏱️ {show.runtime} min/épisode</span>}
             <span>👥 Ajoutée par {show.added_by_count} utilisateur{show.added_by_count > 1 ? 's' : ''}</span>
           </div>
 

@@ -3,29 +3,51 @@ import * as tvmaze from './tvmaze.js';
 import * as itunes from './itunes.js';
 import * as wikipedia from './wikipedia.js';
 import * as wikidata from './wikidata.js';
+import * as justwatch from './justwatch.js';
 
 const STALE_MS = 24 * 60 * 60 * 1000; // refresh cached metadata after 1 day
 
+// TVmaze/Wikipedia only ever give one platform mention at best, buried in prose, and neither has
+// a rating — JustWatch has both (real per-platform availability, an IMDb/TMDB-backed score) plus
+// its own page as a "more info" link. Non-fatal: an unofficial API glitching shouldn't break the
+// TVmaze/Wikipedia data that's actually load-bearing for the rest of the page.
+async function findJustWatchInfo(title, objectType) {
+  try {
+    return await justwatch.findByTitle(title, objectType);
+  } catch {
+    return null;
+  }
+}
+
 export async function cacheShow(sourceId) {
   let show = db.prepare(`SELECT * FROM shows WHERE source = 'tvmaze' AND source_id = ?`).get(String(sourceId));
-  // Same self-healing logic as movies (see cacheMovie below): treat a show missing its poster or
-  // backdrop as stale regardless of age, so shows cached before those fields existed pick them up
-  // the next time this runs, instead of staying incomplete for up to a day.
-  const isIncomplete = show && (!show.poster || !show.backdrop);
+  // Same self-healing logic as movies (see cacheMovie below): treat a show missing its poster,
+  // backdrop or JustWatch info as stale regardless of age, so shows cached before those fields
+  // existed pick them up the next time this runs, instead of staying incomplete for up to a day.
+  const isIncomplete = show && (!show.poster || !show.backdrop || !show.jw_url);
   const isStale = !show || isIncomplete || Date.now() - new Date(show.updated_at + 'Z').getTime() > STALE_MS;
 
   if (isStale) {
     const details = await tvmaze.getShowDetails(sourceId);
+    const jw = await findJustWatchInfo(details.title, 'SHOW');
     const upsert = db.prepare(`
-      INSERT INTO shows (source, source_id, type, title, poster, backdrop, synopsis, note, genres, air_status, platform, schedule_day, schedule_time, runtime, next_episode_json, nb_seasons, nb_episodes, updated_at)
-      VALUES ('tvmaze', @source_id, @type, @title, @poster, @backdrop, @synopsis, @note, @genres, @air_status, @platform, @schedule_day, @schedule_time, @runtime, @next_episode_json, @nb_seasons, @nb_episodes, datetime('now'))
+      INSERT INTO shows (source, source_id, type, title, poster, backdrop, synopsis, note, genres, air_status, platform, schedule_day, schedule_time, runtime, next_episode_json, nb_seasons, nb_episodes, jw_platforms, jw_score, jw_url, updated_at)
+      VALUES ('tvmaze', @source_id, @type, @title, @poster, @backdrop, @synopsis, @note, @genres, @air_status, @platform, @schedule_day, @schedule_time, @runtime, @next_episode_json, @nb_seasons, @nb_episodes, @jw_platforms, @jw_score, @jw_url, datetime('now'))
       ON CONFLICT(source, source_id) DO UPDATE SET
         type=excluded.type, title=excluded.title, poster=excluded.poster, backdrop=excluded.backdrop,
         synopsis=excluded.synopsis, note=excluded.note, genres=excluded.genres, air_status=excluded.air_status,
         platform=excluded.platform, schedule_day=excluded.schedule_day, schedule_time=excluded.schedule_time, runtime=excluded.runtime,
-        next_episode_json=excluded.next_episode_json, nb_seasons=excluded.nb_seasons, nb_episodes=excluded.nb_episodes, updated_at=datetime('now')
+        next_episode_json=excluded.next_episode_json, nb_seasons=excluded.nb_seasons, nb_episodes=excluded.nb_episodes,
+        jw_platforms=excluded.jw_platforms, jw_score=excluded.jw_score, jw_url=excluded.jw_url, updated_at=datetime('now')
     `);
-    upsert.run({ ...details, genres: JSON.stringify(details.genres), next_episode_json: JSON.stringify(details.next_episode) });
+    upsert.run({
+      ...details,
+      genres: JSON.stringify(details.genres),
+      next_episode_json: JSON.stringify(details.next_episode),
+      jw_platforms: JSON.stringify(jw?.platforms || []),
+      jw_score: jw?.score ?? null,
+      jw_url: jw?.url ?? null,
+    });
     show = db.prepare(`SELECT * FROM shows WHERE source = 'tvmaze' AND source_id = ?`).get(String(sourceId));
 
     const insertEp = db.prepare(`
@@ -114,15 +136,19 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
       ? await itunes.getMovieDetails(sourceId)
       : await wikipedia.getMovieSummary(sourceId);
     const details = await enrichMovieWithWikidata(baseDetails, { posterOnly });
+    // Skipped when posterOnly: that path exists specifically to be cheap (see movies.js's
+    // poster-healing loop) — platforms/rating aren't shown there, so there's nothing to gain by
+    // spending an extra call on them, and they'll be filled in on the next full view regardless.
+    const jw = posterOnly ? null : await findJustWatchInfo(details.title, 'MOVIE');
 
     const upsert = db.prepare(`
-      INSERT INTO movies (source, source_id, title, poster, backdrop, synopsis, duration, note, genres, release_date, platform, cast_json, next_installment_json, updated_at)
-      VALUES (@source, @source_id, @title, @poster, @backdrop, @synopsis, @duration, @note, @genres, @release_date, @platform, @cast_json, @next_installment_json, datetime('now'))
+      INSERT INTO movies (source, source_id, title, poster, backdrop, synopsis, duration, note, genres, release_date, platform, cast_json, next_installment_json, jw_platforms, jw_score, jw_url, updated_at)
+      VALUES (@source, @source_id, @title, @poster, @backdrop, @synopsis, @duration, @note, @genres, @release_date, @platform, @cast_json, @next_installment_json, @jw_platforms, @jw_score, @jw_url, datetime('now'))
       ON CONFLICT(source, source_id) DO UPDATE SET
         title=excluded.title, poster=excluded.poster, backdrop=excluded.backdrop, synopsis=excluded.synopsis,
         duration=excluded.duration, note=excluded.note, genres=excluded.genres, release_date=excluded.release_date,
         platform=excluded.platform, cast_json=excluded.cast_json, next_installment_json=excluded.next_installment_json,
-        updated_at=datetime('now')
+        jw_platforms=excluded.jw_platforms, jw_score=excluded.jw_score, jw_url=excluded.jw_url, updated_at=datetime('now')
     `);
     upsert.run({
       ...details,
@@ -130,6 +156,9 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
       genres: JSON.stringify(details.genres),
       cast_json: JSON.stringify(details.cast),
       next_installment_json: JSON.stringify(details.next_installment),
+      jw_platforms: JSON.stringify(jw?.platforms || []),
+      jw_score: jw?.score ?? null,
+      jw_url: jw?.url ?? null,
     });
     movie = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, String(sourceId));
   }

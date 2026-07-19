@@ -102,7 +102,7 @@ router.get('/:showId', async (req, res, next) => {
       WHERE us.user_id = ? AND us.show_id = ?`).get(req.user.id, showId);
     if (!userShow) return res.status(404).json({ error: 'Série introuvable dans votre liste.' });
 
-    if (!userShow.poster || !userShow.backdrop) {
+    if (!userShow.poster || !userShow.backdrop || !userShow.jw_url) {
       await cacheShow(userShow.source_id).catch(() => {});
       userShow = db.prepare(`SELECT us.*, s.* FROM user_shows us JOIN shows s ON s.id = us.show_id
         WHERE us.user_id = ? AND us.show_id = ?`).get(req.user.id, showId);
@@ -136,6 +136,9 @@ router.get('/:showId', async (req, res, next) => {
       genres: JSON.parse(userShow.genres || '[]'),
       air_status: userShow.air_status,
       platform: userShow.platform,
+      jw_platforms: JSON.parse(userShow.jw_platforms || '[]'),
+      jw_score: userShow.jw_score,
+      jw_url: userShow.jw_url,
       schedule_day: userShow.schedule_day,
       schedule_time: userShow.schedule_time,
       runtime: userShow.runtime,

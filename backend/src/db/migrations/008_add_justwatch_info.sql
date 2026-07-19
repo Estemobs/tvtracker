@@ -1,0 +1,6 @@
+ALTER TABLE shows ADD COLUMN jw_platforms TEXT;
+ALTER TABLE shows ADD COLUMN jw_score REAL;
+ALTER TABLE shows ADD COLUMN jw_url TEXT;
+ALTER TABLE movies ADD COLUMN jw_platforms TEXT;
+ALTER TABLE movies ADD COLUMN jw_score REAL;
+ALTER TABLE movies ADD COLUMN jw_url TEXT;
