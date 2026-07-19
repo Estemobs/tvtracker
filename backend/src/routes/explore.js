@@ -4,6 +4,7 @@ import * as tvmaze from '../services/tvmaze.js';
 import * as itunes from '../services/itunes.js';
 import * as wikipedia from '../services/wikipedia.js';
 import * as wikidata from '../services/wikidata.js';
+import * as justwatch from '../services/justwatch.js';
 import { enrichMovieWithWikidata } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
 
