@@ -8,12 +8,10 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "npx vitest run",
+    "test:watch": "npx vitest"
   },
-  "devDependencies": {
-    "vitest": "^3.0.0"
-  },
+
   "dependencies": {
     "better-sqlite3": "^11.3.0",
     "bcryptjs": "^2.4.3",

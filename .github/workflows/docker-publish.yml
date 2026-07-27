@@ -18,7 +18,7 @@ jobs:
           node-version: "20"
       - run: npm install
         working-directory: backend
-      - run: npm test
+      - run: npx vitest run
         working-directory: backend
         env:
           JWT_SECRET: test-secret
