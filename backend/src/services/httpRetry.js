@@ -24,7 +24,7 @@ const hostState = new Map(); // hostname -> { until, backoff }
 export const bulkImportContext = new AsyncLocalStorage();
 const INTERACTIVE_MAX_WAIT_MS = 1200;
 
-function hostnameOf(url) {
+export function hostnameOf(url) {
   try { return new URL(url).hostname; } catch { return 'unknown'; }
 }
 
