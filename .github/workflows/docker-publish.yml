@@ -9,8 +9,23 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+        env:
+          JWT_SECRET: test-secret
+
   build-and-push:
     runs-on: ubuntu-latest
+    needs: [test]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
