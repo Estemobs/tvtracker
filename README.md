@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <b>Zéro clé d'API</b> · <b>Un seul conteneur Docker</b> · <b>Mise à jour automatique à chaque push</b>
+  <b>Zéro clé d'API</b> · <b>Un seul conteneur Docker</b> · <b>Mise à jour automatique à chaque push</b> · <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPL--3.0-blue" alt="Licence AGPL-3.0" /></a>
 </p>
 
 <p align="center">
