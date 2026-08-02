@@ -20,7 +20,7 @@
     "express-rate-limit": "^7.4.0",
     "multer": "^2.0.0",
     "cookie-parser": "^1.4.6",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.0",
     "csv-parse": "^5.6.0"
   }
 }
