@@ -4,6 +4,7 @@ import * as itunes from './itunes.js';
 import * as wikipedia from './wikipedia.js';
 import * as wikidata from './wikidata.js';
 import * as justwatch from './justwatch.js';
+import * as tmdb from './tmdb.js';
 
 const STALE_MS = 24 * 60 * 60 * 1000; // refresh cached metadata after 1 day
 
@@ -80,14 +81,21 @@ export async function enrichMovieWithWikidata(details, { posterOnly = false } = 
   let wikibaseItem = details.wikibase_item;
   let platform = details.platform;
 
+  let poster = details.poster;
+  // TMDB has the best poster coverage of any free source — try it before the Wikidata/Wikipedia
+  // chain so a film whose French/English article lacks a lead image still gets a poster. Driving
+  // everything through details.title means it works even when there's no Wikidata item.
+  if (tmdb.isTmdbConfigured() && !poster) {
+    poster = await tmdb.findPoster(details.title, { year: details.release_date?.slice(0, 4) }).catch(() => null);
+  }
+
   if (!wikibaseItem) {
     const frenchArticle = await wikipedia.findFrenchArticle(details.title).catch(() => null);
     wikibaseItem = frenchArticle?.wikibase_item || null;
     platform = platform || frenchArticle?.platform || null;
   }
-  if (!wikibaseItem) return { ...details, platform, cast: [] };
+  if (!wikibaseItem) return { ...details, poster, backdrop: details.backdrop || poster, platform, cast: [] };
 
-  let poster = details.poster;
   if (!poster) {
     poster = await wikidata.getPoster(wikibaseItem).catch(() => null);
   }

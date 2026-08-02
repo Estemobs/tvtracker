@@ -11,6 +11,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      TMDB_API_KEY: ${TMDB_API_KEY}
     volumes:
       - tvtracker_data:/data
     healthcheck:
