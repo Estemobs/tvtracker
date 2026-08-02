@@ -16,7 +16,7 @@
     "better-sqlite3": "^11.3.0",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
-    "express": "^4.21.0",
+    "express": "^5.2.1",
     "express-rate-limit": "^7.4.0",
     "multer": "^2.0.0",
     "cookie-parser": "^1.4.6",
