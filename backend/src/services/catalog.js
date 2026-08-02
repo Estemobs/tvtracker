@@ -84,8 +84,9 @@ export async function enrichMovieWithWikidata(details, { posterOnly = false } = 
   let poster = details.poster;
   // TMDB has the best poster coverage of any free source — try it before the Wikidata/Wikipedia
   // chain so a film whose French/English article lacks a lead image still gets a poster. Driving
-  // everything through details.title means it works even when there's no Wikidata item.
-  if (tmdb.isTmdbConfigured() && !poster) {
+  // everything through details.title means it works even when there's no Wikidata item. (When no
+  // TMDB_API_KEY is configured findPoster just returns null immediately, so no need to gate here.)
+  if (!poster) {
     poster = await tmdb.findPoster(details.title, { year: details.release_date?.slice(0, 4) }).catch(() => null);
   }
 

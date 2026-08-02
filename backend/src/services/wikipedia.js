@@ -1,4 +1,5 @@
 import * as wikidata from './wikidata.js';
+import * as tmdb from './tmdb.js';
 import { fetchWithRetry, mapWithLimit } from './httpRetry.js';
 
 const HEADERS = { 'User-Agent': 'TVTracker/1.0 (self-hosted watch tracker; no contact url)' };
@@ -126,7 +127,14 @@ async function getSynopsisSection(base, key) {
 // the moment you open it.
 async function resolveMissingPoster(key) {
   const summary = await getSummary('https://fr.wikipedia.org', key).catch(() => null);
-  const wikibaseItem = summary?.wikibase_item;
+  if (!summary) return null;
+  // TMDB has the best poster coverage for recent films whose French article has no lead image yet,
+  // and it doesn't even need a Wikidata item — try it before the Wikidata/English-wiki chain.
+  const tmdbPoster = await tmdb.findPoster(cleanTitle(summary.title), {
+    year: extractYear(summary.description, summary.title),
+  }).catch(() => null);
+  if (tmdbPoster) return tmdbPoster;
+  const wikibaseItem = summary.wikibase_item;
   if (!wikibaseItem) return null;
   const wikidataPoster = await wikidata.getPoster(wikibaseItem).catch(() => null);
   if (wikidataPoster) return wikidataPoster;
