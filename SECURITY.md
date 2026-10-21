@@ -1,6 +1,6 @@
 # Sécurité
 
-La confidentialité des données est au cœur de TVTracker : aucune clé d'API, aucune donnée ne quitte votre serveur sauf les requêtes de catalogue (TVmaze, Wikipédia, iTunes).
+La confidentialité des données est au cœur de TVTracker : aucune clé d'API, aucune donnée ne quitte votre serveur sauf les requêtes de catalogue (TVmaze, Cinemeta, iTunes, JustWatch).
 
 ## Signaler une vulnérabilité
 

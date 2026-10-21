@@ -1,17 +1,120 @@
 import { db } from '../db/index.js';
 import * as tvmaze from './tvmaze.js';
 import * as itunes from './itunes.js';
+import * as cinemeta from './cinemeta.js';
 import * as wikipedia from './wikipedia.js';
 import * as wikidata from './wikidata.js';
 import * as justwatch from './justwatch.js';
 import * as tmdb from './tmdb.js';
+import { log as debugLog } from './debugLog.js';
 
-const STALE_MS = 24 * 60 * 60 * 1000; // refresh cached metadata after 1 day
+const STALE_MS = 24 * 60 * 60 * 1000; // refresh cached show metadata after 1 day
+// Movie sheets change even less often than show schedules, and Cinemeta is an unofficial add-on
+// whose data we'd rather not re-request on every detail view.
+const MOVIE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+// A search result grid is cheap to re-query but still not worth hammering Cinemeta/iTunes for
+// every keystroke someone commits; a few hours keeps it fresh without making the cache useless.
+const SEARCH_TTL_MS = 3 * 60 * 60 * 1000;
 
-// TVmaze/Wikipedia only ever give one platform mention at best, buried in prose, and neither has
-// a rating — JustWatch has both (real per-platform availability, an IMDb/TMDB-backed score) plus
-// its own page as a "more info" link. Non-fatal: an unofficial API glitching shouldn't break the
-// TVmaze/Wikipedia data that's actually load-bearing for the rest of the page.
+// cinemeta is the default; wikipedia remains an explicit opt-out for the migration test week.
+export function movieProvider() {
+  return String(process.env.MOVIE_PROVIDER || '').toLowerCase() === 'wikipedia' ? 'wikipedia' : 'cinemeta';
+}
+
+function normalizeTitle(title) {
+  return (title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+// Exact (accent/case-insensitive) match first, then whichever result the source ranked first.
+// This is the same rule the old Wikipedia path used to avoid attaching an unrelated film that
+// merely shared a word with the query.
+function pickBestMatch(candidates, query) {
+  if (!candidates.length) return null;
+  const target = normalizeTitle(query);
+  return candidates.find((c) => normalizeTitle(c.title) === target) || candidates[0];
+}
+
+function searchCacheKey(query) {
+  return String(query || '').trim().toLowerCase();
+}
+
+// A best-effort enrichment must never make a detail page feel stuck. Race it against a short
+// deadline; the underlying request still settles in the background, but the page moves on.
+async function withTimeout(promise, ms, fallback = null) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => { timer = setTimeout(() => resolve(fallback), ms); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function readSearchCache(provider, query) {
+  const row = db.prepare('SELECT results_json, updated_at FROM movie_search_cache WHERE provider = ? AND query = ?')
+    .get(provider, searchCacheKey(query));
+  if (!row) return null;
+  if (Date.now() - new Date(row.updated_at + 'Z').getTime() > SEARCH_TTL_MS) return null;
+  try {
+    const parsed = JSON.parse(row.results_json);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSearchCache(provider, query, results) {
+  if (!results.length) return;
+  db.prepare(`
+    INSERT INTO movie_search_cache (provider, query, results_json, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(provider, query) DO UPDATE SET
+      results_json = excluded.results_json, updated_at = datetime('now')
+  `).run(provider, searchCacheKey(query), JSON.stringify(results));
+}
+
+// Provider-aware movie search. Cinemeta is primary; an empty/failed Cinemeta search falls back
+// to iTunes (French storefront) so the Explorer search box never simply dies with the unofficial
+// source. The result shape is identical for both, so callers don't need to know which one ran.
+export async function searchMovies(query) {
+  const term = String(query || '').trim();
+  if (!term) return [];
+  const provider = movieProvider();
+
+  const cached = readSearchCache(provider, term);
+  if (cached) return cached;
+
+  if (provider === 'wikipedia') {
+    const results = await wikipedia.searchMoviesAnyLanguage(term);
+    writeSearchCache(provider, term, results);
+    return results;
+  }
+
+  let results = [];
+  try {
+    results = await cinemeta.searchMovies(term);
+  } catch (error) {
+    debugLog('movies', `Recherche Cinemeta « ${term} » échouée (${error.message}) — repli iTunes.`);
+  }
+  if (!results.length) {
+    results = await itunes.searchMovies(term).catch(() => []);
+    debugLog('movies', `Recherche « ${term} » : ${results.length} résultat(s) de repli iTunes.`);
+  }
+  writeSearchCache(provider, term, results);
+  return results;
+}
+
+export async function findMovieBestMatch(query) {
+  if (movieProvider() === 'wikipedia') return wikipedia.findMovieBestMatch(query);
+  return pickBestMatch(await searchMovies(query), query);
+}
+
+// Cinemeta/iTunes/Wikipedia only ever give a best-effort rating/platform mention, and JustWatch
+// has both (real per-platform availability, an IMDb/TMDB-backed score) plus its own page as a
+// "more info" link. Non-fatal: an unofficial API glitching shouldn't break the catalogue data
+// that's actually load-bearing for the rest of the page.
 async function findJustWatchInfo(title, objectType) {
   try {
     return await justwatch.findByTitle(title, objectType);
@@ -67,7 +170,7 @@ export async function cacheShow(sourceId) {
   return show;
 }
 
-// Wikidata cross-referencing: fills gaps the primary source (Wikipedia/iTunes) left empty —
+// Wikidata cross-referencing: fills gaps the primary source (Cinemeta/iTunes/Wikipedia) left empty —
 // cast list (with actor photos), a normalized rating, a platform mention, an upcoming sequel,
 // and a poster (Wikidata's own image claim, then the English Wikipedia article via its exact
 // Wikidata sitelink — never a fuzzy title search, to avoid attaching an unrelated film's poster).
@@ -80,22 +183,31 @@ export async function cacheShow(sourceId) {
 export async function enrichMovieWithWikidata(details, { posterOnly = false } = {}) {
   let wikibaseItem = details.wikibase_item;
   let platform = details.platform;
+  const baseCast = Array.isArray(details.cast) ? details.cast : [];
 
   let poster = details.poster;
   // TMDB has the best poster coverage of any free source — try it before the Wikidata/Wikipedia
-  // chain so a film whose French/English article lacks a lead image still gets a poster. Driving
-  // everything through details.title means it works even when there's no Wikidata item. (When no
-  // TMDB_API_KEY is configured findPoster just returns null immediately, so no need to gate here.)
+  // chain so a film whose source lacks a poster still gets one. Driving everything through
+  // details.title means it works even when there's no Wikidata item. (When no TMDB_API_KEY is
+  // configured findPoster just returns null immediately, so no need to gate here.)
   if (!poster) {
     poster = await tmdb.findPoster(details.title, { year: details.release_date?.slice(0, 4) }).catch(() => null);
   }
 
-  if (!wikibaseItem) {
+  // Cinemeta already hands us an IMDb id, and Wikidata's P345 property turns that into the exact
+  // item — no fuzzy title search, which is both faster and immune to same-name films.
+  if (!wikibaseItem && details.imdb_id) {
+    wikibaseItem = await wikidata.findByImdbId(details.imdb_id).catch(() => null);
+  }
+  // Legacy provider rows (Wikipedia/iTunes) have no IMDb id; keep their old resolution path.
+  if (!wikibaseItem && details.title) {
     const frenchArticle = await wikipedia.findFrenchArticle(details.title).catch(() => null);
     wikibaseItem = frenchArticle?.wikibase_item || null;
     platform = platform || frenchArticle?.platform || null;
   }
-  if (!wikibaseItem) return { ...details, poster, backdrop: details.backdrop || poster, platform, cast: [] };
+  if (!wikibaseItem) {
+    return { ...details, poster, backdrop: details.backdrop || poster, platform, cast: baseCast };
+  }
 
   if (!poster) {
     poster = await wikidata.getPoster(wikibaseItem).catch(() => null);
@@ -113,7 +225,7 @@ export async function enrichMovieWithWikidata(details, { posterOnly = false } = 
   const backdrop = details.backdrop || poster;
 
   if (posterOnly) {
-    return { ...details, poster, backdrop, platform, cast: [] };
+    return { ...details, poster, backdrop, platform, cast: baseCast };
   }
 
   const [{ cast, rating }, nextInstallment] = await Promise.all([
@@ -127,47 +239,87 @@ export async function enrichMovieWithWikidata(details, { posterOnly = false } = 
     backdrop,
     platform,
     note: details.note ?? rating?.value ?? null,
-    cast,
+    // Wikidata's cast has photos/person ids; Cinemeta's names-only list is a fine fallback when
+    // the film has no Wikidata item or its P161 statements are empty.
+    cast: cast.length ? cast : baseCast,
     next_installment: nextInstallment,
   };
+}
+
+async function fetchMovieDetails(source, sourceId) {
+  if (source === 'cinemeta') return cinemeta.getMovie(sourceId);
+  if (source === 'itunes') return itunes.getMovieDetails(sourceId);
+  if (source === 'wikipedia') return wikipedia.getMovieSummary(sourceId);
+  const err = new Error('Source de film inconnue.');
+  err.status = 400;
+  throw err;
+}
+
+// Only an exact, unambiguous title/year match is trusted here — the same rule as the one-off
+// backfill script. Used to give an iTunes-fallback movie an IMDb id even though iTunes doesn't
+// expose one, so the cache keeps converging on IMDb as its canonical key.
+async function resolveImdbId(title, year) {
+  const candidates = await cinemeta.searchMovies(title).catch(() => []);
+  const target = normalizeTitle(title);
+  const exact = candidates.filter((c) => normalizeTitle(c.title) === target);
+  const match = year
+    ? exact.find((c) => c.year === String(year))
+    : (exact.length === 1 ? exact[0] : null);
+  return match?.source_id || null;
 }
 
 export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) {
   let movie = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, String(sourceId));
   // Treat a movie missing its poster, cast, duration or release date as stale regardless of age:
   // an empty result more often means a past fetch failed (rate limit, momentary network issue,
-  // or — for duration/release date specifically — a movie added via the Wikipedia source, which
-  // barely reports either on its own, see below) than that the source genuinely has nothing, so
-  // it's worth retrying on the next view rather than sitting incomplete forever (a NULL duration
-  // would otherwise make this movie silently drop out of any total-watch-time stat for good).
-  const isIncomplete = movie && (!movie.poster || !movie.backdrop || movie.cast_json === '[]' || !movie.cast_json || !movie.duration || !movie.release_date);
-  const isStale = !movie || isIncomplete || Date.now() - new Date(movie.updated_at + 'Z').getTime() > STALE_MS;
+  // or — for legacy Wikipedia rows — a source that barely reports duration/release date) than
+  // that the source genuinely has nothing, so it's worth retrying rather than sitting incomplete
+  // forever (a NULL duration would otherwise silently drop out of total-watch-time stats).
+  // Cinemeta is allowed to have an empty cast without being considered broken; otherwise a film
+  // with no listed cast would be re-fetched on every single view instead of staying cached.
+  const castMissing = !movie?.cast_json || (movie.cast_json === '[]' && source !== 'cinemeta');
+  const isIncomplete = movie && (!movie.poster || !movie.backdrop || castMissing || !movie.duration || !movie.release_date);
+  const maxAge = source === 'cinemeta' ? MOVIE_STALE_MS : STALE_MS;
+  const isStale = !movie || isIncomplete || Date.now() - new Date(movie.updated_at + 'Z').getTime() > maxAge;
 
   if (isStale) {
-    const baseDetails = source === 'itunes'
-      ? await itunes.getMovieDetails(sourceId)
-      : await wikipedia.getMovieSummary(sourceId);
+    const baseDetails = await fetchMovieDetails(source, sourceId);
     const details = await enrichMovieWithWikidata(baseDetails, { posterOnly });
+    const originalTitle = details.title;
+
+    // Cinemeta's titles are English; the iTunes French storefront sometimes knows the localized
+    // title. This is a best-effort detail-page improvement, never a reason to fail the fetch.
+    if (source === 'cinemeta' && details.title) {
+      const localized = await withTimeout(itunes.findLocalizedTitle(details.title, {
+        year: details.release_date?.slice(0, 4),
+      }).catch(() => null), 4000);
+      if (localized) details.title = localized;
+    }
+
+    if (!details.imdb_id && details.title) {
+      details.imdb_id = await resolveImdbId(details.title, details.release_date?.slice(0, 4));
+    }
+
     // Fetched even when posterOnly: unlike the Wikidata cast/rating/next-installment calls that
     // flag skips (each its own rate-limit-prone round trip — see movies.js's poster-healing loop
-    // comment), JustWatch has been reliable and cheap (one call) throughout, and it's also the
-    // only source of duration for a Wikipedia-sourced movie — skipping it here would mean a movie
-    // healed through this path keeps a NULL duration until someone happens to open its detail page.
-    const jw = await findJustWatchInfo(details.title, 'MOVIE');
-    // Wikipedia's own summary never reports a runtime (see getMovieSummary) — JustWatch's does,
-    // so it's the only fallback available for anything not sourced from iTunes.
+    // comment), JustWatch has been reliable and cheap (one call) throughout, and it's also a
+    // useful source of duration/platform info when the primary source lacks one.
+    let jw = await findJustWatchInfo(details.title, 'MOVIE');
+    // A localized title can miss JustWatch's own title; retry with the source title before
+    // giving up on platform/score information.
+    if (!jw && originalTitle && originalTitle !== details.title) {
+      jw = await findJustWatchInfo(originalTitle, 'MOVIE');
+    }
     if (!details.duration && jw?.runtime) details.duration = jw.runtime;
-    // Wikipedia's "release date" is really just the first 4-digit number regex-matched out of the
-    // short description (see extractYear) — good enough as a last resort, but wrong or altogether
-    // missing whenever that description doesn't happen to contain a bare year (older/classic films
-    // in particular, whose description is often just "film américain de X" with no year at all).
-    // JustWatch's actual release date is precise, so it wins whenever it's there.
+    // JustWatch's release date is precise (unlike the year-only fallback some legacy sources
+    // give), so it wins whenever it's there.
     if (jw?.releaseDate) details.release_date = jw.releaseDate;
 
     const upsert = db.prepare(`
-      INSERT INTO movies (source, source_id, title, poster, backdrop, synopsis, duration, note, genres, release_date, platform, cast_json, next_installment_json, jw_platforms, jw_score, jw_url, updated_at)
-      VALUES (@source, @source_id, @title, @poster, @backdrop, @synopsis, @duration, @note, @genres, @release_date, @platform, @cast_json, @next_installment_json, @jw_platforms, @jw_score, @jw_url, datetime('now'))
+      INSERT INTO movies (source, source_id, imdb_id, title, poster, backdrop, synopsis, duration, note, genres, release_date, platform, cast_json, next_installment_json, jw_platforms, jw_score, jw_url, updated_at)
+      VALUES (@source, @source_id, @imdb_id, @title, @poster, @backdrop, @synopsis, @duration, @note, @genres, @release_date, @platform, @cast_json, @next_installment_json, @jw_platforms, @jw_score, @jw_url, datetime('now'))
       ON CONFLICT(source, source_id) DO UPDATE SET
+        imdb_id=COALESCE(excluded.imdb_id, movies.imdb_id),
         title=excluded.title, poster=excluded.poster, backdrop=excluded.backdrop, synopsis=excluded.synopsis,
         duration=excluded.duration, note=excluded.note, genres=excluded.genres, release_date=excluded.release_date,
         platform=excluded.platform, cast_json=excluded.cast_json, next_installment_json=excluded.next_installment_json,
@@ -175,10 +327,13 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
     `);
     upsert.run({
       ...details,
+      source,
+      source_id: String(sourceId),
+      imdb_id: details.imdb_id || (source === 'cinemeta' ? String(sourceId) : null),
       platform: details.platform || null,
-      genres: JSON.stringify(details.genres),
-      cast_json: JSON.stringify(details.cast),
-      next_installment_json: JSON.stringify(details.next_installment),
+      genres: JSON.stringify(details.genres || []),
+      cast_json: JSON.stringify(details.cast || []),
+      next_installment_json: JSON.stringify(details.next_installment ?? null),
       jw_platforms: JSON.stringify(jw?.platforms || []),
       jw_score: jw?.score ?? null,
       jw_url: jw?.url ?? null,
@@ -187,4 +342,29 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
   }
 
   return movie;
+}
+
+// Shared serialization so /movies/:id and /explore/movie/:source/:sourceId return the exact same
+// shape (genres/cast/next-installment JSON columns decoded, no raw DB row leaking out).
+export function movieRowToDetails(row) {
+  return {
+    movie_id: row.id,
+    source: row.source,
+    source_id: row.source_id,
+    imdb_id: row.imdb_id,
+    title: row.title,
+    poster: row.poster,
+    backdrop: row.backdrop,
+    synopsis: row.synopsis,
+    duration: row.duration,
+    note: row.note,
+    genres: JSON.parse(row.genres || '[]'),
+    release_date: row.release_date,
+    platform: row.platform,
+    jw_platforms: JSON.parse(row.jw_platforms || '[]'),
+    jw_score: row.jw_score,
+    jw_url: row.jw_url,
+    cast: JSON.parse(row.cast_json || '[]'),
+    next_installment: JSON.parse(row.next_installment_json || 'null'),
+  };
 }

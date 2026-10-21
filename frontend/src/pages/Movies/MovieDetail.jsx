@@ -6,9 +6,8 @@ import ExpandableText from '../../components/ExpandableText.jsx';
 import { RatingBadge, PlatformRow } from '../../components/JustWatchInfo.jsx';
 import { LoadingProgress, useElapsedSeconds } from '../../components/LoadingProgress.jsx';
 
-// `release_date` is either a bare 4-digit year (Wikipedia's crude extraction, see
-// backend/src/services/wikipedia.js's extractYear) or a full YYYY-MM-DD (JustWatch's, more
-// precise when available) — show whichever precision is actually there.
+// `release_date` is either a bare 4-digit year (some sources only expose that) or a full
+// YYYY-MM-DD (JustWatch's, more precise when available) — show whichever precision is there.
 function formatReleaseDate(releaseDate) {
   if (!releaseDate) return null;
   if (releaseDate.length === 4) return releaseDate;

@@ -9,7 +9,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "npx vitest run",
-    "test:watch": "npx vitest"
+    "test:watch": "npx vitest",
+    "backfill:imdb": "node src/scripts/backfill-imdb-ids.js"
   },
 
   "dependencies": {

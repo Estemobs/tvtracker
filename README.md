@@ -85,16 +85,17 @@ Chaque push sur `main` republie l'image sur GHCR ; sur un serveur lancé avec [`
 | `JWT_SECRET` | Signature des sessions — générer avec `openssl rand -hex 32` | ✅ |
 | `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Compte admin initial | ✅ |
 | `PORT` | Port HTTP exposé | non (3000) |
+| `MOVIE_PROVIDER` | Source des films : `cinemeta` (défaut) ou `wikipedia` (retour arrière pendant la migration) | non (cinemeta) |
 
 ## Un catalogue sans clé d'API
 
 | Contenu | Source |
 |---|---|
 | Séries & animes | [TVmaze](https://www.tvmaze.com/api) — recherche, fiches, saisons/épisodes, notes |
-| Films — recherche | [Wikipédia](https://fr.wikipedia.org) |
+| Films — recherche | [Cinemeta](https://v3-cinemeta.strem.io) — repli [iTunes](https://itunes.apple.com) |
 | Films — tendances | [iTunes](https://itunes.apple.com) |
 
-Compromis assumé : certains films n'ont pas de durée ou de note publique selon la source — c'est le prix de l'absence totale de clé d'API à demander à vos utilisateurs.
+Cinemeta est un service non officiel et ses titres sont en anglais ; quand iTunes connaît une fiche française, son titre localisé est utilisé sur la fiche du film.
 
 **Import TV Time** : la page Profil accepte directement l'export RGPD téléchargé sur [gdpr.tvtime.com](https://gdpr.tvtime.com/gdpr/self-service) — l'import tourne en fond avec une barre de progression, pas besoin de tout ressaisir à la main.
 
@@ -111,7 +112,7 @@ Compromis assumé : certains films n'ont pas de durée ou de note publique selon
 │                          │        volume /data    │
 │                          │      (BDD + avatars)   │
 │                          ▼                       │
-│              TVmaze · iTunes · Wikipédia         │
+│              TVmaze · Cinemeta · iTunes          │
 │               (catalogue, sans clé d'API)        │
 └─────────────────────────────────────────────────┘
 ```
@@ -130,11 +131,19 @@ cd frontend && npm install
 npm run dev
 ```
 
+Après une mise à jour depuis une version où les films étaient sourcés Wikipédia, associer leur identifiant IMDb et les rebasculer sur Cinemeta :
+
+```bash
+cd backend && npm run backfill:imdb          # --dry-run pour prévisualiser
+```
+
+Les correspondances ambiguës sont listées à la fin pour arbitrage manuel.
+
 ```
 backend/src/
   db/          connexion SQLite + migrations (jouées au boot)
   routes/      auth, admin, shows, movies, explore, profile
-  services/    tvmaze.js, itunes.js, wikipedia.js, catalog.js (cache)
+  services/    tvmaze.js, cinemeta.js, itunes.js, catalog.js (cache)
 frontend/src/
   pages/       Series, Movies, Explore, Profile, Admin
   components/  NavBar, PosterCard, ProgressBar

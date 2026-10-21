@@ -2,8 +2,7 @@ import AdmZip from 'adm-zip';
 import { parse } from 'csv-parse/sync';
 import { db } from '../db/index.js';
 import * as tvmaze from './tvmaze.js';
-import * as wikipedia from './wikipedia.js';
-import { cacheShow, cacheMovie } from './catalog.js';
+import { cacheShow, cacheMovie, searchMovies } from './catalog.js';
 import { bulkImportContext } from './httpRetry.js';
 
 const EPISODES_FILE = 'tracking-prod-records-v2.csv';
@@ -38,12 +37,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function matchMovie(title, releaseDate) {
   // Movies are already processed one at a time (see mapWithConcurrency limit below), but firing
   // each lookup the instant the previous one resolves still produces a fairly tight burst against
-  // Wikipedia/Wikidata over a large import — this small pacing gap is cheap insurance against
-  // tripping their rate limiter, on top of the fallback-search fix that removed most of the
-  // unnecessary request volume in the first place.
+  // the metadata providers over a large import — this small pacing gap is cheap insurance against
+  // tripping their rate limiter, on top of the search cache that removes most of the unnecessary
+  // request volume in the first place.
   await sleep(250);
   const year = (releaseDate || '').slice(0, 4);
-  const results = await wikipedia.searchMoviesAnyLanguage(title).catch(() => []);
+  const results = await searchMovies(title).catch(() => []);
   if (!results.length) return null;
   return results.find((r) => r.year === year) || results[0];
 }
@@ -158,7 +157,7 @@ async function runImport(zip, userId, onProgress) {
         tick('movies');
         return;
       }
-      const movie = await cacheMovie('wikipedia', match.source_id, { posterOnly: true });
+      const movie = await cacheMovie(match.source, match.source_id, { posterOnly: true });
       db.prepare(`
         INSERT INTO user_movies (user_id, movie_id, status, watched_at) VALUES (?, ?, 'watched', ?)
         ON CONFLICT(user_id, movie_id) DO UPDATE SET status = 'watched', watched_at = excluded.watched_at
@@ -180,7 +179,7 @@ async function runImport(zip, userId, onProgress) {
         tick('movies');
         return;
       }
-      const movie = await cacheMovie('wikipedia', match.source_id, { posterOnly: true });
+      const movie = await cacheMovie(match.source, match.source_id, { posterOnly: true });
       db.prepare(`INSERT INTO user_movies (user_id, movie_id) VALUES (?, ?) ON CONFLICT(user_id, movie_id) DO NOTHING`)
         .run(userId, movie.id);
       summary.movies_to_watch_imported++;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { cacheMovie } from '../services/catalog.js';
+import { cacheMovie, movieRowToDetails } from '../services/catalog.js';
 import { mapWithLimit } from '../services/httpRetry.js';
 
 const router = Router();
@@ -11,16 +11,16 @@ router.use(requireAuth);
 // takes forever" problem fixed earlier) — but a movie missing its poster, duration or release
 // date here would otherwise only ever heal once someone happens to open its detail page (duration
 // matters even though this list doesn't show it: it's what the profile's total-watch-time stat
-// sums, and a NULL duration — the norm for anything added via the Wikipedia source — silently
-// zeroes that stat). Kick off a background re-fetch for any such row; it'll show up correctly on
+// sums, and a NULL duration — more common on legacy sources — silently zeroes that stat). Kick
+// off a background re-fetch for any such row; it'll show up correctly on
 // the next load instead. The in-flight set just avoids piling up duplicate fetches if the list is
 // reloaded again before the first one finishes.
 //
 // Two things this deliberately avoids, both of which turned "open the movie list" into "every
-// other Wikipedia-backed feature on the site stalls for the next 20-30s": posterOnly skips the
+// other catalogue-backed feature on the site stalls for the next 20-30s": posterOnly skips the
 // cast/rating/next-installment enrichment this view never shows anyway (each of those is its own
 // Wikidata round trip); mapWithLimit spreads the re-fetches out instead of firing all of a list's
-// incomplete movies at Wikipedia/Wikidata simultaneously, which was enough of a burst to trip
+// incomplete movies at external services simultaneously, which was enough of a burst to trip
 // their rate limiter and jam the shared per-host cooldown for every other request in flight.
 const healingMovies = new Set();
 async function healPostersInBackground(rows) {
@@ -105,23 +105,7 @@ router.get('/:movieId', async (req, res, next) => {
 
     const addedByCount = db.prepare('SELECT COUNT(*) c FROM user_movies WHERE movie_id = ?').get(row.movie_id).c;
     res.json({
-      movie_id: row.movie_id,
-      source: row.source,
-      source_id: row.source_id,
-      title: row.title,
-      poster: row.poster,
-      backdrop: row.backdrop,
-      synopsis: row.synopsis,
-      duration: row.duration,
-      note: row.note,
-      genres: JSON.parse(row.genres || '[]'),
-      release_date: row.release_date,
-      platform: row.platform,
-      jw_platforms: JSON.parse(row.jw_platforms || '[]'),
-      jw_score: row.jw_score,
-      jw_url: row.jw_url,
-      cast: JSON.parse(row.cast_json || '[]'),
-      next_installment: JSON.parse(row.next_installment_json || 'null'),
+      ...movieRowToDetails(row),
       added_by_count: addedByCount,
       status: row.status,
       personal_rating: row.personal_rating,

@@ -1,12 +1,10 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import * as tvmaze from '../services/tvmaze.js';
-import * as itunes from '../services/itunes.js';
-import * as wikipedia from '../services/wikipedia.js';
 import * as wikidata from '../services/wikidata.js';
 import * as justwatch from '../services/justwatch.js';
 import * as allocine from '../services/allocine.js';
-import { enrichMovieWithWikidata } from '../services/catalog.js';
+import { cacheMovie, findMovieBestMatch, movieRowToDetails, searchMovies } from '../services/catalog.js';
 import { requireAuth } from '../middleware/auth.js';
 import { log as debugLog } from '../services/debugLog.js';
 import { bulkImportContext } from '../services/httpRetry.js';
@@ -58,7 +56,7 @@ router.get('/search', async (req, res, next) => {
     if (!q) return res.json({ results: [] });
     const [shows, movies] = await Promise.all([
       tvmaze.searchShows(q).catch(() => []),
-      wikipedia.searchMoviesAnyLanguage(q).catch(() => []),
+      searchMovies(q).catch(() => []),
     ]);
 
     res.json({ results: annotateAdded(req, dedupe([...shows, ...movies])) });
@@ -100,7 +98,7 @@ router.get('/resolve', async (req, res, next) => {
   try {
     const { title, media_type: mediaType } = req.query;
     if (!title || !['tv', 'movie'].includes(mediaType)) return res.status(400).json({ error: 'Paramètres invalides.' });
-    const match = mediaType === 'tv' ? (await resolveShow(title))[0] : await wikipedia.findMovieBestMatch(title);
+    const match = mediaType === 'tv' ? (await resolveShow(title))[0] : await findMovieBestMatch(title);
     if (!match) return res.status(404).json({ error: 'Introuvable dans le catalogue.' });
     res.json(annotateAdded(req, [match])[0]);
   } catch (e) { next(e); }
@@ -248,21 +246,20 @@ router.get('/tv/:sourceId', async (req, res, next) => {
 router.get('/movie/:source/:sourceId', async (req, res, next) => {
   try {
     const { source, sourceId } = req.params;
-    if (!['itunes', 'wikipedia'].includes(source)) return res.status(400).json({ error: 'Source invalide.' });
-    const baseDetails = source === 'itunes'
-      ? await itunes.getMovieDetails(sourceId)
-      : await wikipedia.getMovieSummary(sourceId);
-    const details = await enrichMovieWithWikidata(baseDetails);
+    if (!['itunes', 'wikipedia', 'cinemeta'].includes(source)) return res.status(400).json({ error: 'Source invalide.' });
+    // cacheMovie is the same path POST /movies uses, so opening a detail sheet now populates the
+    // SQLite cache (several days for Cinemeta) instead of re-fetching every provider on each view.
+    const movie = await cacheMovie(source, sourceId);
 
-    const cachedMovie = db.prepare('SELECT id FROM movies WHERE source = ? AND source_id = ?').get(source, sourceId);
-    const addedByCount = cachedMovie
-      ? db.prepare('SELECT COUNT(*) c FROM user_movies WHERE movie_id = ?').get(cachedMovie.id).c
-      : 0;
-    const already = cachedMovie
-      ? db.prepare(`SELECT 1 FROM user_movies WHERE user_id = ? AND movie_id = ?`).get(req.user.id, cachedMovie.id)
-      : null;
+    const addedByCount = db.prepare('SELECT COUNT(*) c FROM user_movies WHERE movie_id = ?').get(movie.id).c;
+    const already = db.prepare(`SELECT 1 FROM user_movies WHERE user_id = ? AND movie_id = ?`).get(req.user.id, movie.id);
 
-    res.json({ ...details, added_by_count: addedByCount, already_added: !!already, movie_id: already ? cachedMovie.id : null });
+    res.json({
+      ...movieRowToDetails(movie),
+      added_by_count: addedByCount,
+      already_added: !!already,
+      movie_id: already ? movie.id : null,
+    });
   } catch (e) { next(e); }
 });
 
@@ -315,8 +312,10 @@ async function fetchActorLive(personId) {
   // lookup above. Best-effort: if the name search finds nothing or finds the wrong person, the
   // TVmaze list alone — already correct, just incomplete — is still shown rather than nothing.
   let fullFilmography = filmography;
+  let bioWikidataId = isWikidataId ? personId : null;
   if (!isWikidataId) {
     const wikidataId = await bulkImportContext.run(true, () => wikidata.findPersonByName(person.name)).catch(() => null);
+    bioWikidataId = wikidataId;
     if (wikidataId) {
       const movieCredits = await getMovieFilmography(wikidataId);
       const seen = new Set(filmography.map((f) => f.title.toLowerCase().trim()));
@@ -327,7 +326,7 @@ async function fetchActorLive(personId) {
     }
   }
 
-  const bio = await wikipedia.getPersonBio(person.name).catch(() => null);
+  const bio = bioWikidataId ? await wikidata.getPersonBio(bioWikidataId).catch(() => null) : null;
   return { ...person, bio, filmography: fullFilmography };
 }
 

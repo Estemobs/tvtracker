@@ -22,11 +22,11 @@ router.post('/debug/toggle', (req, res) => {
 
 // The list page's own background healing (movies.js) only ever fixes 2 movies per visit — fine
 // for an occasional gap, hopeless for someone with a couple hundred movies imported before
-// `duration`/`release_date` were tracked (or added via the Wikipedia source, which barely reports
+// `duration`/`release_date` were tracked (or added via a legacy source that barely reported
 // either): at that scale it can take dozens of visits to actually catch up, which reads as "still
 // just broken" rather than "still healing". This runs the same repair across every incomplete
 // movie in the catalog (not just one user's list) in one go, still throttled the same way to stay
-// gentle on Wikipedia/Wikidata. Enable debug mode first (above) to watch it progress.
+// gentle on the external metadata services. Enable debug mode first (above) to watch it progress.
 let backfillRunning = false;
 const MISSING_INFO_WHERE = `duration IS NULL OR release_date IS NULL`;
 router.get('/movies/missing-duration-count', (req, res) => {

@@ -35,6 +35,25 @@ function normalizeScore(rawValue, sourceLabel) {
   return null;
 }
 
+// Resolve an IMDb title id to its Wikidata item through P345 ("IMDb ID"). This is what lets the
+// Cinemeta-sourced movie path keep the cast/rating/next-installment enrichment without ever
+// needing a fuzzy Wikipedia title search to find the Wikidata item first.
+export async function findByImdbId(imdbId) {
+  if (!/^tt\d+$/.test(imdbId || '')) return null;
+  const query = `
+    SELECT ?item WHERE {
+      ?item wdt:P345 "${imdbId}".
+    } LIMIT 1
+  `;
+  const url = new URL(SPARQL_ENDPOINT);
+  url.searchParams.set('query', query);
+  const resp = await fetchWithRetry(url, { headers: { ...HEADERS, Accept: 'application/sparql-results+json' } });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  const item = data.results?.bindings?.[0]?.item?.value;
+  return item ? item.split('/').pop() : null;
+}
+
 export async function getCastAndRating(wikibaseItem) {
   if (!wikibaseItem) return { cast: [], rating: null };
 
@@ -191,6 +210,25 @@ export async function findPersonByName(name) {
     if (/\bactor|actress|actor and film director\b/i.test(candidate.description || '')) return candidate.id;
   }
   return null;
+}
+
+// Actor bio from the exact Wikipedia article linked to their Wikidata item. Unlike a fuzzy name
+// search, the sitelink can't resolve to a same-named stranger. French is preferred, English is
+// the fallback; either summary is just the article lead paragraph, which is what the actor modal
+// displays.
+export async function getPersonBio(wikibaseItem) {
+  if (!wikibaseItem) return null;
+  const [frTitle, enTitle] = await Promise.all([
+    getFrenchSitelink(wikibaseItem).catch(() => null),
+    getEnglishSitelink(wikibaseItem).catch(() => null),
+  ]);
+  const base = frTitle ? 'https://fr.wikipedia.org' : enTitle ? 'https://en.wikipedia.org' : null;
+  const title = frTitle || enTitle;
+  if (!base || !title) return null;
+  const resp = await fetchWithRetry(`${base}/api/rest_v1/page/summary/${encodeURIComponent(title)}`, { headers: HEADERS });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  return data.extract || null;
 }
 
 export async function getPerson(personId) {

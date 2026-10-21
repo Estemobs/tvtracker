@@ -17,7 +17,6 @@ const FILM_DESCRIPTION = /^(?:\S+\s+){0,1}(film|long[\s-]m[ée]trage)\b/i;
 // so also accept the "(film)" / "(film, 2026)" disambiguator commonly used in the page title itself.
 const FILM_TITLE_HINT = /\(film(?:,\s*\d{4})?\)$/i;
 const EN_FILM_TITLE_HINT = /\(\d{4}\s*film\)$/i;
-const PERSON_DESCRIPTION = /\b(acteur|actrice|actor|actress)\b/i;
 const SYNOPSIS_SECTION = /^(synopsis|intrigue|r[ée]sum[ée])$/i;
 const PLATFORM_PATTERN = /\b(?:diffus[ée]e?|disponible|sorti[e]?|distribu[ée]e?)\s+(?:sur|dans|via)\s+([A-Z][\w+.\s]{2,25}?)(?=[.,;]|\s+(?:et|le|en|dans|à|aux)\b|$)/;
 
@@ -327,16 +326,4 @@ export async function searchMoviesEnglishFallback(query) {
     seen.add(m.source_id);
     return true;
   });
-}
-
-export async function getPersonBio(name) {
-  try {
-    const pages = await searchPages('https://fr.wikipedia.org', name, 5);
-    const match = pages.find((p) => PERSON_DESCRIPTION.test(p.description || '')) || pages[0];
-    if (!match) return null;
-    const data = await getSummary('https://fr.wikipedia.org', match.key);
-    return data?.extract || null;
-  } catch {
-    return null;
-  }
 }
