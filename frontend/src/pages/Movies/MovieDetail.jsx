@@ -19,9 +19,13 @@ export default function MovieDetail() {
   const navigate = useNavigate();
   const [movie, setMovie] = useState(null);
   const [selectedActorId, setSelectedActorId] = useState(null);
+  const [backdropFailed, setBackdropFailed] = useState(false);
 
   const load = () => api.get(`/movies/${movieId}`).then(setMovie);
-  useEffect(() => { load(); }, [movieId]);
+  useEffect(() => {
+    setBackdropFailed(false);
+    load();
+  }, [movieId]);
   const loadingSeconds = useElapsedSeconds(!movie);
 
   if (!movie) return <LoadingProgress seconds={loadingSeconds} />;
@@ -45,9 +49,26 @@ export default function MovieDetail() {
 
   return (
     <div className="space-y-5 pb-8">
-      {movie.backdrop && (
-        <div className="-mx-4 sm:-mx-6 -mt-4 sm:-mt-6 h-40 sm:h-56 overflow-hidden">
-          <img src={movie.backdrop} alt="" className="w-full h-full object-cover opacity-40" />
+      {(movie.backdrop || movie.poster) && (
+        <div className="relative -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 h-40 sm:h-56 overflow-hidden bg-base-900">
+          {movie.poster && (
+            <img
+              src={movie.poster}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-40"
+              referrerPolicy="no-referrer"
+            />
+          )}
+          {movie.backdrop && !backdropFailed && (
+            <img
+              src={movie.backdrop}
+              alt=""
+              className="relative w-full h-full object-cover opacity-40"
+              referrerPolicy="no-referrer"
+              onError={() => setBackdropFailed(true)}
+            />
+          )}
         </div>
       )}
       <div className="flex gap-4">

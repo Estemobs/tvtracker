@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { isDebugEnabled, setDebugEnabled, getLogs, log as debugLog } from '../services/debugLog.js';
-import { cacheMovie } from '../services/catalog.js';
+import { repairMovie } from '../services/catalog.js';
 import { mapWithLimit } from '../services/httpRetry.js';
 
 const router = Router();
@@ -28,7 +28,7 @@ router.post('/debug/toggle', (req, res) => {
 // movie in the catalog (not just one user's list) in one go, still throttled the same way to stay
 // gentle on the external metadata services. Enable debug mode first (above) to watch it progress.
 let backfillRunning = false;
-const MISSING_INFO_WHERE = `duration IS NULL OR release_date IS NULL`;
+const MISSING_INFO_WHERE = `poster IS NULL OR duration IS NULL OR release_date IS NULL`;
 router.get('/movies/missing-duration-count', (req, res) => {
   const { count } = db.prepare(`SELECT COUNT(*) as count FROM movies WHERE ${MISSING_INFO_WHERE}`).get();
   res.json({ count, running: backfillRunning });
@@ -43,7 +43,7 @@ router.post('/movies/backfill-durations', (req, res) => {
   debugLog('backfill', `Réparation de ${rows.length} films incomplets démarrée.`);
   mapWithLimit(rows, 2, async (r) => {
     try {
-      await cacheMovie(r.source, r.source_id, { posterOnly: true });
+      await repairMovie(r);
     } catch (error) {
       debugLog('backfill', `Échec pour ${r.source}:${r.source_id} : ${error.message}`);
     }

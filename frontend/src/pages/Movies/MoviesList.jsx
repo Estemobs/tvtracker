@@ -23,16 +23,32 @@ export default function MoviesList() {
   }, [filter, sort]);
 
   // The list itself already heals a couple of movies per visit in the background, silently — this
-  // gives an explicit "do it now" action with a real count, and reloads the list a bit later once
-  // the repair (still throttled server-side to stay gentle on Wikipedia/Wikidata) has had time to
-  // land, instead of leaving the user wondering whether anything happened at all.
+  // gives an explicit "do it now" action with real progress. The server answers immediately and
+  // keeps working; polling lets the UI reload only once the repair has actually finished, instead
+  // of guessing a fixed delay and showing the old, still-posterless rows.
   const repairImages = async () => {
     setRepairing(true);
     setRepairMessage(null);
     try {
-      const { count } = await api.post('/movies/repair-images');
-      setRepairMessage(count === 0 ? 'Rien à réparer, tout est déjà complet.' : `Réparation de ${count} film${count > 1 ? 's' : ''} lancée…`);
-      if (count > 0) setTimeout(load, 6000);
+      let job = await api.post('/movies/repair-images');
+      if (!job.total) {
+        setRepairMessage('Rien à réparer, tout est déjà complet.');
+        return;
+      }
+
+      setRepairMessage(`Réparation de ${job.total} film${job.total > 1 ? 's' : ''} lancée…`);
+      while (job.running) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        job = await api.get('/movies/repair-images');
+        setRepairMessage(`Réparation… ${job.done}/${job.total}`);
+      }
+
+      load();
+      setRepairMessage(job.repaired > 0
+        ? `${job.repaired} film${job.repaired > 1 ? 's' : ''} réparé${job.repaired > 1 ? 's' : ''}.`
+        : 'Réparation terminée.');
+    } catch (error) {
+      setRepairMessage(error.message || 'La réparation a échoué.');
     } finally {
       setRepairing(false);
     }

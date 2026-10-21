@@ -6,6 +6,7 @@ import * as wikipedia from './wikipedia.js';
 import * as wikidata from './wikidata.js';
 import * as justwatch from './justwatch.js';
 import * as tmdb from './tmdb.js';
+import { normalizeTitle, pickRepairMatch, yearOf } from './movieMatch.js';
 import { log as debugLog } from './debugLog.js';
 
 const STALE_MS = 24 * 60 * 60 * 1000; // refresh cached show metadata after 1 day
@@ -19,10 +20,6 @@ const SEARCH_TTL_MS = 3 * 60 * 60 * 1000;
 // cinemeta is the default; wikipedia remains an explicit opt-out for the migration test week.
 export function movieProvider() {
   return String(process.env.MOVIE_PROVIDER || '').toLowerCase() === 'wikipedia' ? 'wikipedia' : 'cinemeta';
-}
-
-function normalizeTitle(title) {
-  return (title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
 // Exact (accent/case-insensitive) match first, then whichever result the source ranked first.
@@ -320,10 +317,21 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
       VALUES (@source, @source_id, @imdb_id, @title, @poster, @backdrop, @synopsis, @duration, @note, @genres, @release_date, @platform, @cast_json, @next_installment_json, @jw_platforms, @jw_score, @jw_url, datetime('now'))
       ON CONFLICT(source, source_id) DO UPDATE SET
         imdb_id=COALESCE(excluded.imdb_id, movies.imdb_id),
-        title=excluded.title, poster=excluded.poster, backdrop=excluded.backdrop, synopsis=excluded.synopsis,
-        duration=excluded.duration, note=excluded.note, genres=excluded.genres, release_date=excluded.release_date,
-        platform=excluded.platform, cast_json=excluded.cast_json, next_installment_json=excluded.next_installment_json,
-        jw_platforms=excluded.jw_platforms, jw_score=excluded.jw_score, jw_url=excluded.jw_url, updated_at=datetime('now')
+        title=CASE WHEN excluded.title != '' THEN excluded.title ELSE movies.title END,
+        poster=COALESCE(excluded.poster, movies.poster),
+        backdrop=COALESCE(excluded.backdrop, movies.backdrop),
+        synopsis=CASE WHEN excluded.synopsis != '' THEN excluded.synopsis ELSE movies.synopsis END,
+        duration=COALESCE(excluded.duration, movies.duration),
+        note=COALESCE(excluded.note, movies.note),
+        genres=CASE WHEN excluded.genres NOT IN ('', '[]') THEN excluded.genres ELSE movies.genres END,
+        release_date=COALESCE(excluded.release_date, movies.release_date),
+        platform=COALESCE(excluded.platform, movies.platform),
+        cast_json=CASE WHEN excluded.cast_json NOT IN ('', '[]') THEN excluded.cast_json ELSE movies.cast_json END,
+        next_installment_json=CASE WHEN excluded.next_installment_json NOT IN ('', 'null') THEN excluded.next_installment_json ELSE movies.next_installment_json END,
+        jw_platforms=CASE WHEN excluded.jw_platforms NOT IN ('', '[]') THEN excluded.jw_platforms ELSE movies.jw_platforms END,
+        jw_score=COALESCE(excluded.jw_score, movies.jw_score),
+        jw_url=COALESCE(excluded.jw_url, movies.jw_url),
+        updated_at=datetime('now')
     `);
     upsert.run({
       ...details,
@@ -342,6 +350,115 @@ export async function cacheMovie(source, sourceId, { posterOnly = false } = {}) 
   }
 
   return movie;
+}
+
+// Cinemeta is the best source for a missing/expired poster, but an old row's title may be
+// localized. `pickRepairMatch` (above) decides whether a title search is trustworthy enough to use.
+async function findCinemetaPoster(row) {
+  let imdbId = /^tt\d+$/.test(row.imdb_id || '') ? row.imdb_id : null;
+  let match = null;
+
+  if (!imdbId) {
+    const candidates = await cinemeta.searchMovies(row.title).catch(() => []);
+    match = pickRepairMatch(candidates, row.title, yearOf(row.release_date));
+    imdbId = match?.source_id || null;
+  }
+  if (!imdbId) return null;
+
+  const details = await cinemeta.getMovie(imdbId).catch(() => null);
+  const poster = details?.poster || match?.poster || null;
+  if (!poster) return null;
+  return {
+    imdb_id: imdbId,
+    poster,
+    backdrop: details?.backdrop || null,
+    duration: details?.duration ?? null,
+    release_date: details?.release_date || null,
+  };
+}
+
+// Last resort for rows Cinemeta can't identify: TMDB (localized titles), then Wikidata via the
+// exact French Wikipedia article, then the English Wikipedia article's lead image.
+async function findFallbackPoster(row) {
+  const year = yearOf(row.release_date);
+  const tmdbPoster = await tmdb.findPoster(row.title, { year }).catch(() => null);
+  if (tmdbPoster) return tmdbPoster;
+
+  let wikibaseItem = /^tt\d+$/.test(row.imdb_id || '')
+    ? await wikidata.findByImdbId(row.imdb_id).catch(() => null)
+    : null;
+  if (!wikibaseItem) {
+    const frenchArticle = await wikipedia.findFrenchArticle(row.title).catch(() => null);
+    wikibaseItem = frenchArticle?.wikibase_item || null;
+  }
+  if (!wikibaseItem) return null;
+
+  const wikidataPoster = await wikidata.getPoster(wikibaseItem).catch(() => null);
+  if (wikidataPoster) return wikidataPoster;
+
+  const enTitle = await wikidata.getEnglishSitelink(wikibaseItem).catch(() => null);
+  if (!enTitle) return null;
+  const englishArticle = await wikipedia.getEnglishSummaryByTitle(enTitle).catch(() => null);
+  return englishArticle?.poster || null;
+}
+
+// Repairs one movie in place, regardless of which provider originally cached it. `cacheMovie`
+// already handles the normal case; this adds the cross-provider fallbacks that legacy rows need
+// when their old iTunes/Wikipedia source no longer answers (a removed storefront id, a renamed
+// article, ...). Returns true when a column actually changed.
+export async function repairMovie(row) {
+  const source = row.source;
+  const sourceId = String(row.source_id);
+  let current = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, sourceId);
+  if (!current) return false;
+
+  const before = current;
+  // Cinemeta rows don't need a full cache refresh: findCinemetaPoster below already fetches the
+  // same detail sheet and, unlike cacheMovie's posterOnly mode, doesn't replace an enriched cast
+  // with Cinemeta's names-only list. Legacy rows still get their own provider tried first.
+  if (source !== 'cinemeta' && (!current.poster || !current.duration || !current.release_date)) {
+    await cacheMovie(source, sourceId, { posterOnly: true }).catch(() => {});
+    current = db.prepare(`SELECT * FROM movies WHERE source = ? AND source_id = ?`).get(source, sourceId) || current;
+  }
+  let changed = current.poster !== before.poster || current.backdrop !== before.backdrop
+    || current.imdb_id !== before.imdb_id || current.duration !== before.duration
+    || current.release_date !== before.release_date;
+
+  let { poster, backdrop, imdb_id: imdbId, duration, release_date: releaseDate } = current;
+
+  if (!poster || !backdrop || !duration || !releaseDate) {
+    const cine = await findCinemetaPoster(current).catch(() => null);
+    if (cine) {
+      poster = poster || cine.poster;
+      backdrop = backdrop || cine.backdrop || cine.poster;
+      imdbId = imdbId || cine.imdb_id;
+      duration = duration ?? cine.duration;
+      releaseDate = releaseDate || cine.release_date;
+    }
+  }
+
+  if (!poster) {
+    const fallbackPoster = await findFallbackPoster(current).catch(() => null);
+    if (fallbackPoster) {
+      poster = fallbackPoster;
+      backdrop = backdrop || fallbackPoster;
+    }
+  }
+
+  if (poster === current.poster && backdrop === current.backdrop && imdbId === current.imdb_id
+    && duration === current.duration && releaseDate === current.release_date) {
+    return changed;
+  }
+
+  db.prepare(`UPDATE movies SET
+    poster = COALESCE(?, poster),
+    backdrop = COALESCE(?, backdrop),
+    imdb_id = COALESCE(imdb_id, ?),
+    duration = COALESCE(duration, ?),
+    release_date = COALESCE(release_date, ?),
+    updated_at = datetime('now')
+    WHERE id = ?`).run(poster, backdrop, imdbId, duration, releaseDate, current.id);
+  return true;
 }
 
 // Shared serialization so /movies/:id and /explore/movie/:source/:sourceId return the exact same

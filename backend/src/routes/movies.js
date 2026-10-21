@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { cacheMovie, movieRowToDetails } from '../services/catalog.js';
+import { cacheMovie, movieRowToDetails, repairMovie } from '../services/catalog.js';
 import { mapWithLimit } from '../services/httpRetry.js';
 
 const router = Router();
@@ -28,7 +28,7 @@ async function healPostersInBackground(rows) {
   if (!toHeal.length) return;
   for (const r of toHeal) healingMovies.add(`${r.source}:${r.source_id}`);
   try {
-    await mapWithLimit(toHeal, 2, (r) => cacheMovie(r.source, r.source_id, { posterOnly: true }).catch(() => {}));
+    await mapWithLimit(toHeal, 2, (r) => repairMovie(r).catch(() => {}));
   } finally {
     for (const r of toHeal) healingMovies.delete(`${r.source}:${r.source_id}`);
   }
@@ -67,14 +67,53 @@ router.get('/', (req, res) => {
 
 // The automatic healing above only ever fixes 2 movies per list visit, silently — fine for the
 // odd gap, but with enough missing images it just looks like nothing's being done. This gives the
-// user an explicit "repair now" action with a real count back, instead of hoping a background job
-// catches up eventually.
+// user an explicit "repair now" action with real progress back, instead of hoping a background job
+// catches up eventually (or reloading the list before the job has actually finished).
+const repairJobs = new Map(); // userId -> { total, done, repaired, running }
+const REPAIR_CONCURRENCY = 2;
+
+function missingMovieInfo(row) {
+  return !row.poster || !row.duration || !row.release_date;
+}
+
+async function runRepairJob(userId, rows) {
+  const job = { total: rows.length, done: 0, repaired: 0, running: true };
+  repairJobs.set(userId, job);
+  try {
+    await mapWithLimit(rows, REPAIR_CONCURRENCY, async (row) => {
+      try {
+        if (await repairMovie(row)) job.repaired += 1;
+      } catch {
+        // A single unreachable source must not abort the whole repair.
+      } finally {
+        job.done += 1;
+      }
+    });
+  } finally {
+    job.running = false;
+    job.finishedAt = Date.now();
+  }
+}
+
 router.post('/repair-images', (req, res) => {
-  const rows = db.prepare(`SELECT m.source, m.source_id, m.poster, m.duration, m.release_date
+  const current = repairJobs.get(req.user.id);
+  if (current?.running) return res.json(current);
+
+  const rows = db.prepare(`SELECT m.id, m.source, m.source_id, m.poster, m.duration, m.release_date
     FROM user_movies um JOIN movies m ON m.id = um.movie_id WHERE um.user_id = ?`).all(req.user.id);
-  const missing = rows.filter((r) => !r.poster || !r.duration || !r.release_date);
-  void healPostersInBackground(rows);
-  res.json({ count: missing.length });
+  const missing = rows.filter(missingMovieInfo);
+  if (!missing.length) {
+    return res.json({ total: 0, done: 0, repaired: 0, running: false });
+  }
+
+  // Respond immediately: a real repair makes several external calls per movie and can take tens
+  // of seconds. The frontend polls GET below to display progress and reload once it's done.
+  void runRepairJob(req.user.id, missing);
+  res.json(repairJobs.get(req.user.id));
+});
+
+router.get('/repair-images', (req, res) => {
+  res.json(repairJobs.get(req.user.id) || { total: 0, done: 0, repaired: 0, running: false });
 });
 
 router.post('/', async (req, res, next) => {

@@ -129,9 +129,9 @@ export default function Admin() {
         <h2 className="text-sm font-semibold text-gray-400">Films incomplets</h2>
         <p className="text-xs text-gray-500">
           Corrige les statistiques de temps de visionnage cassées (ex. "0 h 0 min" alors que des films ont
-          été vus) et les dates de sortie manquantes : les films ajoutés via Wikipedia n'ont ni durée ni date
-          fiable tant qu'ils n'ont pas été réparés. Répare tout le catalogue en une fois plutôt que d'attendre
-          que ça se fasse tout seul au fil des visites.
+          été vus), les dates de sortie et les affiches manquantes : les films ajoutés via d'anciennes sources
+          n'ont parfois ni durée, ni date fiable, ni image tant qu'ils n'ont pas été réparés. Répare tout le
+          catalogue en une fois plutôt que d'attendre que ça se fasse tout seul au fil des visites.
         </p>
         <div className="flex items-center gap-3">
           <button
