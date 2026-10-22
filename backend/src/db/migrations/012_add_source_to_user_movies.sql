@@ -1,6 +1,8 @@
 -- Add source and source_id to user_movies to enable orphaned link repair after migrations
 -- that rebuild the movies table with new IDs but preserve source+source_id
+-- Also add id column for easier row identification
 
+ALTER TABLE user_movies ADD COLUMN id INTEGER PRIMARY KEY AUTOINCREMENT;
 ALTER TABLE user_movies ADD COLUMN source TEXT;
 ALTER TABLE user_movies ADD COLUMN source_id TEXT;
 

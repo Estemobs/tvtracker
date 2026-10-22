@@ -198,7 +198,7 @@ router.post('/movies/full-repair', (req, res) => {
   let relinkedCount = 0;
   try {
     const orphaned = db.prepare(`
-      SELECT um.id, um.source, um.source_id
+      SELECT um.user_id, um.movie_id, um.source, um.source_id
       FROM user_movies um
       LEFT JOIN movies m ON m.id = um.movie_id
       WHERE m.id IS NULL AND um.source IS NOT NULL AND um.source_id IS NOT NULL
@@ -211,12 +211,12 @@ router.post('/movies/full-repair', (req, res) => {
         movieMap.set(`${m.source}:${m.source_id}`, m.id);
       });
 
-      const updateStmt = db.prepare(`UPDATE user_movies SET movie_id = ? WHERE id = ?`);
+      const updateStmt = db.prepare(`UPDATE user_movies SET movie_id = ? WHERE user_id = ? AND movie_id = ?`);
       const tx = db.transaction(() => {
         for (const link of orphaned) {
           const newId = movieMap.get(`${link.source}:${link.source_id}`);
           if (newId) {
-            updateStmt.run(newId, link.id);
+            updateStmt.run(newId, link.user_id, link.movie_id);
             relinkedCount++;
           }
         }
