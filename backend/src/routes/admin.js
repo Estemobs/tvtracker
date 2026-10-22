@@ -193,6 +193,36 @@ router.post('/movies/full-repair', (req, res) => {
 
   debugLog('full-repair', `Réparation complète démarrée pour ${movies.length} films.`);
 
+  // ÉTAPE 1: Réparer les liaisons user_movies orphelines (IDs cassés par migration)
+  const orphaned = db.prepare(`
+    SELECT um.id, um.user_id, um.movie_id, m.source, m.source_id
+    FROM user_movies um
+    LEFT JOIN movies m ON m.id = um.movie_id
+    WHERE m.id IS NULL
+  `).all();
+
+  let relinkedCount = 0;
+  if (orphaned.length > 0) {
+    debugLog('full-repair', `${orphaned.length} liaisons user_movies orphelines détectées, réparation...`);
+    const movieMap = new Map();
+    db.prepare(`SELECT id, source, source_id FROM movies`).all().forEach(m => {
+      movieMap.set(`${m.source}:${m.source_id}`, m.id);
+    });
+
+    const updateStmt = db.prepare(`UPDATE user_movies SET movie_id = ? WHERE id = ?`);
+    const tx = db.transaction(() => {
+      for (const link of orphaned) {
+        const newId = movieMap.get(`${link.source}:${link.source_id}`);
+        if (newId) {
+          updateStmt.run(newId, link.id);
+          relinkedCount++;
+        }
+      }
+    });
+    tx();
+    debugLog('full-repair', `${relinkedCount}/${orphaned.length} liaisons rétablies.`);
+  }
+
   mapWithLimit(movies, 2, async (movie) => {
     try {
       return await repairSingleMovie(movie);
@@ -203,7 +233,7 @@ router.post('/movies/full-repair', (req, res) => {
   })
     .then((results) => {
       const fixedCount = results.filter(Boolean).length;
-      debugLog('full-repair', `Réparation complète terminée : ${fixedCount}/${movies.length} films corrigés.`);
+      debugLog('full-repair', `Réparation complète terminée : ${fixedCount}/${movies.length} films corrigés, ${relinkedCount} liaisons user_movies rétablies.`);
       fullRepairRunning = false;
     })
     .catch(() => { fullRepairRunning = false; });
@@ -211,7 +241,7 @@ router.post('/movies/full-repair', (req, res) => {
   res.json({
     message: `Réparation complète de ${movies.length} films lancée en arrière-plan.`,
     total: movies.length,
-    fixed: 0 // sera mis à jour via le polling
+    fixed: 0
   });
 });
 
