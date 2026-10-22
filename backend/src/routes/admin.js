@@ -194,22 +194,38 @@ router.post('/movies/full-repair', (req, res) => {
   debugLog('full-repair', `Réparation complète démarrée pour ${movies.length} films.`);
 
   // ÉTAPE 1: Réparer les liaisons user_movies orphelines (IDs cassés par migration)
-  // Note: user_movies n'a pas source/source_id, on ne peut pas auto-réparer sans migration
-  // On log juste le compte pour info
+  // Nécessite la migration 012 (source/source_id dans user_movies)
   let relinkedCount = 0;
   try {
     const orphaned = db.prepare(`
-      SELECT um.id, um.movie_id
+      SELECT um.id, um.source, um.source_id
       FROM user_movies um
       LEFT JOIN movies m ON m.id = um.movie_id
-      WHERE m.id IS NULL
+      WHERE m.id IS NULL AND um.source IS NOT NULL AND um.source_id IS NOT NULL
     `).all();
 
     if (orphaned.length > 0) {
-      debugLog('full-repair', `${orphaned.length} liaisons user_movies orphelines détectées (movie_id invalides). Nécessite migration pour ajouter source/source_id à user_movies.`);
+      debugLog('full-repair', `${orphaned.length} liaisons orphelines détectées avec source/source_id, réparation...`);
+      const movieMap = new Map();
+      db.prepare(`SELECT id, source, source_id FROM movies`).all().forEach(m => {
+        movieMap.set(`${m.source}:${m.source_id}`, m.id);
+      });
+
+      const updateStmt = db.prepare(`UPDATE user_movies SET movie_id = ? WHERE id = ?`);
+      const tx = db.transaction(() => {
+        for (const link of orphaned) {
+          const newId = movieMap.get(`${link.source}:${link.source_id}`);
+          if (newId) {
+            updateStmt.run(newId, link.id);
+            relinkedCount++;
+          }
+        }
+      });
+      tx();
+      debugLog('full-repair', `${relinkedCount}/${orphaned.length} liaisons rétablies.`);
     }
   } catch (e) {
-    debugLog('full-repair', `Erreur détection orphelins (non bloquant) : ${e.message}`);
+    debugLog('full-repair', `Réparation orphelins ignorée (migration 012 manquante ou erreur) : ${e.message}`);
   }
 
   mapWithLimit(movies, 2, async (movie) => {
@@ -222,7 +238,7 @@ router.post('/movies/full-repair', (req, res) => {
   })
     .then((results) => {
       const fixedCount = results.filter(Boolean).length;
-      debugLog('full-repair', `Réparation complète terminée : ${fixedCount}/${movies.length} films corrigés.`);
+      debugLog('full-repair', `Réparation complète terminée : ${fixedCount}/${movies.length} films corrigés, ${relinkedCount} liaisons user_movies rétablies.`);
       fullRepairRunning = false;
     })
     .catch((err) => {
