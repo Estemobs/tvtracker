@@ -8,12 +8,16 @@ export default function Admin() {
   const [debug, setDebug] = useState(null);
   const [copied, setCopied] = useState(false);
   const [movieBackfill, setMovieBackfill] = useState(null);
+  const [fullRepair, setFullRepair] = useState(null);
 
   const load = () => {
     api.get('/admin/users/pending').then(setPending);
     api.get('/admin/users').then(setUsers);
     api.get('/admin/debug').then(setDebug);
     api.get('/admin/movies/missing-duration-count').then(setMovieBackfill);
+    api.get('/admin/movies/full-repair-status').then((data) =>
+      setFullRepair({ total: data.total, fixed: data.total - data.incomplete, running: data.running })
+    );
   };
   useEffect(() => { load(); }, []);
 
@@ -27,9 +31,30 @@ export default function Admin() {
     return () => clearInterval(handle);
   }, [movieBackfill?.running]);
 
+  // Poll full repair status while running
+  useEffect(() => {
+    if (!fullRepair?.running) return;
+    const handle = setInterval(() => {
+      api.get('/admin/movies/full-repair-status').then((data) => {
+        setFullRepair((prev) => ({
+          ...prev,
+          total: data.total,
+          fixed: data.total - data.incomplete,
+          running: data.running,
+        }));
+      });
+    }, 5000);
+    return () => clearInterval(handle);
+  }, [fullRepair?.running]);
+
   const startMovieBackfill = async () => {
     const data = await api.post('/admin/movies/backfill-durations');
     setMovieBackfill({ count: data.count, running: data.count > 0 });
+  };
+
+  const startFullRepair = async () => {
+    const data = await api.post('/admin/movies/full-repair');
+    setFullRepair({ total: data.total, fixed: 0, running: data.total > 0 });
   };
 
   const pendingLoadingSeconds = useElapsedSeconds(pending === null);
@@ -145,6 +170,41 @@ export default function Admin() {
           </button>
           {movieBackfill?.running && (
             <span className="text-xs text-gray-500">Active le mode debug ci-dessous pour suivre la progression.</span>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-gray-400">Réparation complète du catalogue films</h2>
+        <p className="text-xs text-gray-500">
+          Récupère affiches, backdrops, durées, dates de sortie et synopsis manquants via plusieurs sources
+          (TMDB, Wikidata, Wikipédia, JustWatch, iTunes). Préserve les données existantes si une source échoue.
+          Utile après une migration ou si des films apparaissent sans image/infos.
+        </p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={startFullRepair}
+              disabled={fullRepair?.running || !fullRepair?.total}
+              className="bg-orange-600 hover:bg-orange-500 disabled:opacity-40 text-xs rounded-lg px-3 py-2 font-medium"
+            >
+              {fullRepair?.running
+                ? `Réparation en cours… ({fullRepair.fixed ?? 0}/{fullRepair.total})`
+                : `Réparer TOUT le catalogue (${fullRepair?.total ?? '…'} films)`}
+            </button>
+            {fullRepair?.running && (
+              <span className="text-xs text-gray-500">Active le mode debug ci-dessous pour suivre la progression détaillée.</span>
+            )}
+          </div>
+          {fullRepair && !fullRepair.running && fullRepair.total > 0 && (
+            <p className="text-xs text-green-400">
+              {fullRepair.fixed > 0
+                ? `✅ ${fullRepair.fixed} film${fullRepair.fixed > 1 ? 's' : ''} corrigé${fullRepair.fixed > 1 ? 's' : ''} sur ${fullRepair.total}`
+                : 'Aucun film à corriger, tout est complet !'}
+            </p>
+          )}
+          {fullRepair && fullRepair.total === 0 && (
+            <p className="text-xs text-gray-500">Aucun film en base de données.</p>
           )}
         </div>
       </section>

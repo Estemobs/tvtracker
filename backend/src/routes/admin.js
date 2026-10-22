@@ -2,7 +2,12 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { isDebugEnabled, setDebugEnabled, getLogs, log as debugLog } from '../services/debugLog.js';
-import { repairMovie } from '../services/catalog.js';
+import { cacheMovie } from '../services/catalog.js';
+import * as itunes from '../services/itunes.js';
+import * as wikipedia from '../services/wikipedia.js';
+import * as justwatch from '../services/justwatch.js';
+import * as tmdb from '../services/tmdb.js';
+import * as wikidata from '../services/wikidata.js';
 import { mapWithLimit } from '../services/httpRetry.js';
 
 const router = Router();
@@ -52,6 +57,160 @@ router.post('/movies/backfill-durations', (req, res) => {
     .finally(() => { backfillRunning = false; });
 
   res.json({ message: `Réparation de ${rows.length} films lancée en arrière-plan.`, count: rows.length });
+});
+
+/// ///////////////////////////////////////////////////////////
+/// RÉPARATION COMPLÈTE DU CATALOGUE FILMS (avec fallbacks multi-sources)
+/// ///////////////////////////////////////////////////////////
+
+let fullRepairRunning = false;
+
+router.get('/movies/full-repair-status', (req, res) => {
+  const total = db.prepare('SELECT COUNT(*) as count FROM movies').get().count;
+  const incomplete = db.prepare(`SELECT COUNT(*) as count FROM movies WHERE
+    poster IS NULL OR backdrop IS NULL OR duration IS NULL OR release_date IS NULL OR synopsis IS NULL OR synopsis = ''`).get().count;
+  res.json({ total, incomplete, running: fullRepairRunning });
+});
+
+async function findBestPoster(title, releaseDate, imdbId = null) {
+  // 1. TMDB (meilleure couverture)
+  const tmdbPoster = await tmdb.findPoster(title, { year: releaseDate?.slice(0, 4) }).catch(() => null);
+  if (tmdbPoster) return { poster: tmdbPoster, source: 'tmdb' };
+
+  // 2. Wikidata via IMDb ID
+  if (imdbId) {
+    const wikibaseItem = await wikidata.findByImdbId(imdbId).catch(() => null);
+    if (wikibaseItem) {
+      const wdPoster = await wikidata.getPoster(wikibaseItem).catch(() => null);
+      if (wdPoster) return { poster: wdPoster, source: 'wikidata' };
+    }
+  }
+
+  // 3. Wikipédia française
+  const frArticle = await wikipedia.findFrenchArticle(title).catch(() => null);
+  if (frArticle?.wikibase_item) {
+    const wdPoster = await wikidata.getPoster(frArticle.wikibase_item).catch(() => null);
+    if (wdPoster) return { poster: wdPoster, source: 'wikipedia' };
+  }
+
+  return null;
+}
+
+async function findBestBackdrop(title, releaseDate, imdbId = null, fallbackPoster = null) {
+  // TMDB n'a pas de backdrop dédié gratuit, on réutilise le poster
+  // Wikidata n'a pas de backdrop
+  // On retourne le poster comme fallback
+  return fallbackPoster;
+}
+
+async function findDurationAndRelease(title, releaseDate) {
+  // JustWatch a les durées et dates précises
+  const jw = await justwatch.findByTitle(title, 'MOVIE').catch(() => null);
+  if (jw) {
+    return {
+      duration: jw.runtime ?? null,
+      release_date: jw.releaseDate ?? null,
+    };
+  }
+  return { duration: null, release_date: null };
+}
+
+async function findSynopsis(title, source, sourceId) {
+  // Essaie la source d'origine d'abord
+  try {
+    if (source === 'itunes') {
+      const details = await itunes.getMovieDetails(sourceId);
+      if (details.synopsis) return details.synopsis;
+    } else if (source === 'wikipedia') {
+      const details = await wikipedia.getMovieSummary(sourceId);
+      if (details.synopsis) return details.synopsis;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+async function repairSingleMovie(movie) {
+  const { source, source_id, title, imdb_id, release_date } = movie;
+  let updated = false;
+  const updates = {};
+
+  // 1. Poster manquant
+  if (!movie.poster || !movie.backdrop) {
+    const posterResult = await findBestPoster(title, release_date, imdb_id);
+    if (posterResult?.poster) {
+      updates.poster = posterResult.poster;
+      if (!movie.backdrop) updates.backdrop = posterResult.poster;
+      updated = true;
+      debugLog('full-repair', `Poster trouvé pour "${title}" via ${posterResult.source}`);
+    }
+  }
+
+  // 2. Durée / date de sortie manquantes
+  if (!movie.duration || !movie.release_date) {
+    const details = await findDurationAndRelease(title, release_date);
+    if (details.duration && !movie.duration) {
+      updates.duration = details.duration;
+      updated = true;
+    }
+    if (details.release_date && !movie.release_date) {
+      updates.release_date = details.release_date;
+      updated = true;
+    }
+  }
+
+  // 3. Synopsis manquant
+  if (!movie.synopsis || movie.synopsis === '') {
+    const synopsis = await findSynopsis(title, source, source_id);
+    if (synopsis) {
+      updates.synopsis = synopsis;
+      updated = true;
+    }
+  }
+
+  if (updated && Object.keys(updates).length > 0) {
+    const setClause = Object.keys(updates).map(k => `${k} = @${k}`).join(', ');
+    db.prepare(`UPDATE movies SET ${setClause}, updated_at = datetime('now') WHERE id = ?`)
+      .run({ ...updates, ...movie });
+  }
+
+  return updated;
+}
+
+router.post('/movies/full-repair', (req, res) => {
+  if (fullRepairRunning) return res.status(409).json({ error: 'Une réparation complète est déjà en cours.' });
+
+  const movies = db.prepare(`
+    SELECT id, source, source_id, imdb_id, title, poster, backdrop, duration, release_date, synopsis
+    FROM movies
+    ORDER BY updated_at ASC
+  `).all();
+
+  if (!movies.length) return res.json({ message: 'Aucun film en base.', total: 0, fixed: 0 });
+
+  fullRepairRunning = true;
+
+  debugLog('full-repair', `Réparation complète démarrée pour ${movies.length} films.`);
+
+  mapWithLimit(movies, 2, async (movie) => {
+    try {
+      return await repairSingleMovie(movie);
+    } catch (error) {
+      debugLog('full-repair', `Échec pour ${movie.title} (${movie.source}:${movie.source_id}) : ${error.message}`);
+      return false;
+    }
+  })
+    .then((results) => {
+      const fixedCount = results.filter(Boolean).length;
+      debugLog('full-repair', `Réparation complète terminée : ${fixedCount}/${movies.length} films corrigés.`);
+      fullRepairRunning = false;
+    })
+    .catch(() => { fullRepairRunning = false; });
+
+  res.json({
+    message: `Réparation complète de ${movies.length} films lancée en arrière-plan.`,
+    total: movies.length,
+    fixed: 0 // sera mis à jour via le polling
+  });
 });
 
 router.get('/users/pending', (req, res) => {
