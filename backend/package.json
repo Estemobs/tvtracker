@@ -10,7 +10,8 @@
     "dev": "node --watch src/index.js",
     "test": "npx vitest run",
     "test:watch": "npx vitest",
-    "backfill:imdb": "node src/scripts/backfill-imdb-ids.js"
+    "backfill:imdb": "node src/scripts/backfill-imdb-ids.js",
+    "recover:user-movies": "node src/scripts/recover-user-movies.js"
   },
 
   "dependencies": {

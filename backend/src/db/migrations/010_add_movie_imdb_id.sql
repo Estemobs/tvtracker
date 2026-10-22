@@ -1,8 +1,15 @@
 -- Movies become keyed by their IMDb id instead of a provider-specific id. SQLite can't alter a
 -- CHECK constraint in place, so the table is rebuilt to allow the new 'cinemeta' source too.
--- defer_foreign_keys keeps user_movies' FK satisfied across the DROP/RENAME while the transaction
--- is open (it is checked once more at COMMIT, and all referenced ids are preserved).
+-- Note: defer_foreign_keys does NOT stop ON DELETE CASCADE from firing on the DROP TABLE below;
+-- that is why user_movies is backed up and restored explicitly.
 PRAGMA defer_foreign_keys = ON;
+
+-- user_movies.movie_id is ON DELETE CASCADE. Dropping the old movies table below therefore fires
+-- that cascade and silently deletes every user's saved films (ownership, watched status, ratings).
+-- Keep a copy in a temp table and put it back after the rebuild. This is what the first version of
+-- this migration missed; existing installs that already ran it need the recovery script, but any
+-- database still on migration 009 must not lose its lists.
+CREATE TEMP TABLE _user_movies_backup AS SELECT * FROM user_movies;
 
 CREATE TABLE movies_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,3 +50,9 @@ DROP TABLE movies;
 ALTER TABLE movies_new RENAME TO movies;
 
 CREATE INDEX IF NOT EXISTS idx_movies_imdb_id ON movies(imdb_id);
+
+INSERT OR IGNORE INTO user_movies (user_id, movie_id, status, personal_rating, added_at, watched_at)
+SELECT user_id, movie_id, status, personal_rating, added_at, watched_at
+FROM _user_movies_backup;
+
+DROP TABLE _user_movies_backup;
