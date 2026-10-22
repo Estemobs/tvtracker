@@ -169,8 +169,10 @@ async function repairSingleMovie(movie) {
 
   if (updated && Object.keys(updates).length > 0) {
     const setClause = Object.keys(updates).map(k => `${k} = @${k}`).join(', ');
-    db.prepare(`UPDATE movies SET ${setClause}, updated_at = datetime('now') WHERE id = ?`)
-      .run({ ...updates, ...movie });
+    // Only pass the fields being updated + id for WHERE clause
+    const params = { ...updates, id: movie.id };
+    db.prepare(`UPDATE movies SET ${setClause}, updated_at = datetime('now') WHERE id = @id`)
+      .run(params);
   }
 
   return updated;
