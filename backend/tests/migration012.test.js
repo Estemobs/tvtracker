@@ -32,15 +32,7 @@ describe('migration 012 (source columns on user_movies)', () => {
       runMigration(db, '012_add_source_to_user_movies.sql');
       const after = db.prepare('SELECT * FROM user_movies').all();
 
-      expect(after).toHaveLength(before.length);
-      expect(after[0]).toMatchObject({
-        user_id: 1,
-        movie_id: 1,
-        status: 'watched',
-        personal_rating: 8.5,
-        source: 'itunes',
-        source_id: '42'
-      });
+      expect(after).toEqual(before.map((row) => ({ ...row, source: 'itunes', source_id: '42' })));
       expect(db.pragma('foreign_key_check')).toEqual([]);
     } finally {
       db.close();

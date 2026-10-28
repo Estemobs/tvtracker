@@ -12,17 +12,24 @@
 //   3. prints what it found (dry-run by default);
 //   4. with --apply, inserts the missing (user, movie) links back.
 //
-// Usage, inside the running app container. DO NOT stop or restart the
-// container before the first dry-run: closing SQLite checkpoints the WAL and
-// can erase the deleted rows we are trying to recover.
+// IMPORTANT: the running 1.0.0 container does not contain this script, and
+// Watchtower may restart the app (and checkpoint the WAL) within ~300 seconds.
+// Back up /data, pause Watchtower, then run a one-off 1.0.1 container with the
+// same volume. Do not restart the app before the first dry-run.
 //
-//   docker exec -it <container> node src/scripts/recover-user-movies.js
-//   docker exec -it <container> node src/scripts/recover-user-movies.js --apply
+//   docker compose -f docker-compose.prod.yml stop watchtower
+//   docker compose -f docker-compose.prod.yml pull tvtracker
+//   docker compose -f docker-compose.prod.yml run --rm --no-deps \
+//     -e DATA_DIR=/data tvtracker node src/scripts/recover-user-movies.js
+//   docker compose -f docker-compose.prod.yml run --rm --no-deps \
+//     -e DATA_DIR=/data tvtracker node src/scripts/recover-user-movies.js --apply
 //
 // Or from backend/:
 //
 //   npm run recover:user-movies
 //   npm run recover:user-movies -- --apply
+//
+// Recovery is best-effort; see README.md for the full backup/restart sequence.
 //
 // The script only inserts links that are absent; it never deletes or overwrites
 // current data. If the deleted pages have already been reused, it may find

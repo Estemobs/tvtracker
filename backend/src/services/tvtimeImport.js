@@ -159,9 +159,14 @@ async function runImport(zip, userId, onProgress) {
       }
       const movie = await cacheMovie(match.source, match.source_id, { posterOnly: true });
       db.prepare(`
-        INSERT INTO user_movies (user_id, movie_id, status, watched_at) VALUES (?, ?, 'watched', ?)
-        ON CONFLICT(user_id, movie_id) DO UPDATE SET status = 'watched', watched_at = excluded.watched_at
-      `).run(userId, movie.id, toSqliteDatetime(row.created_at));
+        INSERT INTO user_movies (user_id, movie_id, source, source_id, status, watched_at)
+        VALUES (?, ?, ?, ?, 'watched', ?)
+        ON CONFLICT(user_id, movie_id) DO UPDATE SET
+          source = excluded.source,
+          source_id = excluded.source_id,
+          status = 'watched',
+          watched_at = excluded.watched_at
+      `).run(userId, movie.id, movie.source, movie.source_id, toSqliteDatetime(row.created_at));
       summary.movies_imported++;
       summary.movies_preview.push({ title: movie.title, poster: movie.poster });
       tick('movies');
@@ -180,8 +185,11 @@ async function runImport(zip, userId, onProgress) {
         return;
       }
       const movie = await cacheMovie(match.source, match.source_id, { posterOnly: true });
-      db.prepare(`INSERT INTO user_movies (user_id, movie_id) VALUES (?, ?) ON CONFLICT(user_id, movie_id) DO NOTHING`)
-        .run(userId, movie.id);
+      db.prepare(`INSERT INTO user_movies (user_id, movie_id, source, source_id) VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, movie_id) DO UPDATE SET
+          source = excluded.source,
+          source_id = excluded.source_id`)
+        .run(userId, movie.id, movie.source, movie.source_id);
       summary.movies_to_watch_imported++;
       summary.movies_preview.push({ title: movie.title, poster: movie.poster });
       tick('movies');

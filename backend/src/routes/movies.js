@@ -121,8 +121,10 @@ router.post('/', async (req, res, next) => {
     const { source, source_id } = req.body || {};
     if (!source || !source_id) return res.status(400).json({ error: 'source et source_id requis.' });
     const movie = await cacheMovie(source, source_id);
-    db.prepare(`INSERT INTO user_movies (user_id, movie_id) VALUES (?, ?)
-      ON CONFLICT(user_id, movie_id) DO NOTHING`).run(req.user.id, movie.id);
+    db.prepare(`INSERT INTO user_movies (user_id, movie_id, source, source_id) VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, movie_id) DO UPDATE SET
+        source = excluded.source,
+        source_id = excluded.source_id`).run(req.user.id, movie.id, movie.source, movie.source_id);
     res.status(201).json({ movie_id: movie.id });
   } catch (e) { next(e); }
 });

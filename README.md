@@ -119,6 +119,47 @@ Cinemeta est un service non officiel et ses titres sont en anglais ; quand iTune
 
 React + Vite + Tailwind côté client, Node.js + Express côté serveur (sert l'API **et** le front sur le même port), SQLite dans un simple fichier. Auth par JWT + bcrypt, verrouillage anti brute-force.
 
+## Récupération des films après la migration 010
+
+La migration 010 des versions précédentes pouvait supprimer les films enregistrés par les utilisateurs. La version 1.0.1 corrige la migration pour les installations qui ne l'ont pas encore exécutée, mais elle ne peut pas restaurer les lignes déjà effacées. Le script `backend/src/scripts/recover-user-movies.js` tente de les retrouver dans le fichier SQLite et son WAL.
+
+La récupération est **best-effort** : elle ne retrouve que les pages qui n'ont pas encore été réutilisées. Faites une sauvegarde avant toute opération.
+
+1. Sauvegarder le volume `/data` (adapter le nom du volume, visible avec `docker volume ls`) :
+
+   ```bash
+   docker run --rm -v tvtracker_tvtracker_data:/data -v "$PWD":/backup alpine \
+     tar czf /backup/tvtracker-data-backup.tgz -C /data .
+   ```
+
+2. Empêcher Watchtower de redémarrer le conteneur pendant l'opération :
+
+   ```bash
+   docker compose -f docker-compose.prod.yml stop watchtower
+   ```
+
+3. Ne pas redémarrer l'application avant le premier dry-run. L'ancien conteneur ne contient pas le script : utilisez l'image 1.0.1 dans un conteneur ponctuel, avec le même volume :
+
+   ```bash
+   docker compose -f docker-compose.prod.yml pull tvtracker
+   docker compose -f docker-compose.prod.yml run --rm --no-deps -e DATA_DIR=/data \
+     tvtracker node src/scripts/recover-user-movies.js
+   ```
+
+4. Si le dry-run trouve des lignes, relancer avec `--apply` :
+
+   ```bash
+   docker compose -f docker-compose.prod.yml run --rm --no-deps -e DATA_DIR=/data \
+     tvtracker node src/scripts/recover-user-movies.js --apply
+   ```
+
+5. Redémarrer l'application et réactiver Watchtower :
+
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d tvtracker
+   docker compose -f docker-compose.prod.yml start watchtower
+   ```
+
 ## Développement
 
 ```bash
