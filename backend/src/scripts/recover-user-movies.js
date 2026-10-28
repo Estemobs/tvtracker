@@ -277,15 +277,19 @@ function main() {
     } else {
       const insert = db.prepare(`
         INSERT OR IGNORE INTO user_movies
-          (user_id, movie_id, status, personal_rating, added_at, watched_at)
-        VALUES
-          (@user_id, @movie_id, @status, @personal_rating, @added_at, @watched_at)
+          (user_id, movie_id, source, source_id, status, personal_rating, added_at, watched_at)
+        SELECT
+          @user_id, @movie_id, m.source, m.source_id,
+          @status, @personal_rating, @added_at, @watched_at
+        FROM movies m
+        WHERE m.id = @movie_id
       `);
+      let restored = 0;
       const apply = db.transaction((rows) => {
-        for (const row of rows) insert.run(row);
+        for (const row of rows) restored += insert.run(row).changes;
       });
       apply(recovered);
-      console.log(`\n[recover] ${recovered.length} lien(s) restauré(s).`);
+      console.log(`\n[recover] ${restored} lien(s) restauré(s) (${recovered.length} candidat(s)).`);
     }
   }
 
