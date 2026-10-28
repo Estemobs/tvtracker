@@ -1,9 +1,11 @@
 import { verifyToken } from '../utils/jwt.js';
 import { db } from '../db/index.js';
+import { SESSION_COOKIE } from '../utils/cookies.js';
 
 export function requireAuth(req, res, next) {
   const header = req.headers.authorization;
-  const token = header && header.startsWith('Bearer ') ? header.slice(7) : null;
+  const bearer = header && header.startsWith('Bearer ') ? header.slice(7) : null;
+  const token = req.cookies?.[SESSION_COOKIE] || bearer;
   if (!token) return res.status(401).json({ error: 'Non authentifié.' });
 
   try {
