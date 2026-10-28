@@ -1,8 +1,10 @@
 -- Add source and source_id to user_movies to enable orphaned link repair after migrations
--- that rebuild the movies table with new IDs but preserve source+source_id
--- Also add id column for easier row identification
+-- that rebuild the movies table with new IDs but preserve source+source_id.
+--
+-- SQLite does not allow ALTER TABLE ... ADD COLUMN with a PRIMARY KEY, so we do
+-- not add an `id` column here: the existing (user_id, movie_id) primary key is
+-- already used by every query.
 
-ALTER TABLE user_movies ADD COLUMN id INTEGER PRIMARY KEY AUTOINCREMENT;
 ALTER TABLE user_movies ADD COLUMN source TEXT;
 ALTER TABLE user_movies ADD COLUMN source_id TEXT;
 
