@@ -5,21 +5,23 @@ import { SESSION_COOKIE } from '../utils/cookies.js';
 export function requireAuth(req, res, next) {
   const header = req.headers.authorization;
   const bearer = header && header.startsWith('Bearer ') ? header.slice(7) : null;
-  const token = req.cookies?.[SESSION_COOKIE] || bearer;
-  if (!token) return res.status(401).json({ error: 'Non authentifié.' });
+  const tokens = [req.cookies?.[SESSION_COOKIE], bearer].filter(Boolean);
+  if (!tokens.length) return res.status(401).json({ error: 'Non authentifié.' });
 
-  try {
-    const payload = verifyToken(token);
-    const user = db.prepare('SELECT id, username, email, role, status, avatar, language, discord_webhook_url, discord_message_template FROM users WHERE id = ?')
-      .get(payload.sub);
-    if (!user || user.status !== 'active') {
-      return res.status(401).json({ error: 'Session invalide.' });
+  for (const token of tokens) {
+    try {
+      const payload = verifyToken(token);
+      const user = db.prepare('SELECT id, username, email, role, status, avatar, language, discord_webhook_url, discord_message_template FROM users WHERE id = ?')
+        .get(payload.sub);
+      if (user && user.status === 'active') {
+        req.user = user;
+        return next();
+      }
+    } catch {
+      // Try the next credential (e.g. a stale cookie must not shadow a valid Bearer token).
     }
-    req.user = user;
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Session invalide.' });
   }
+  return res.status(401).json({ error: 'Session invalide.' });
 }
 
 export function requireAdmin(req, res, next) {

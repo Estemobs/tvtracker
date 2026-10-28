@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DATA_DIR } from './db/index.js';
 import { HEADERS_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from './utils/timeouts.js';
+import { isSafeUploadPath } from './utils/uploads.js';
 import { bootstrapAdmin } from './bootstrapAdmin.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
@@ -40,6 +41,7 @@ app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/version', (req, res) => res.json({ version: process.env.GIT_SHA || 'dev' }));
 
 app.use('/uploads', (req, res, next) => {
+  if (!isSafeUploadPath(req.path)) return res.status(404).end();
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
 }, express.static(path.join(DATA_DIR, 'uploads')));

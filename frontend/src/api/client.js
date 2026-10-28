@@ -1,3 +1,17 @@
+const LEGACY_TOKEN_KEY = 'tvtracker_token';
+
+export function clearLegacyToken() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
+  } catch {
+    // Storage can be unavailable (private mode); the cookie session still works.
+  }
+}
+
+// Remove the JWT left in localStorage by versions before the httpOnly cookie migration.
+clearLegacyToken();
+
 async function request(method, url, body, isForm = false) {
   const headers = {};
   if (body && !isForm) headers['Content-Type'] = 'application/json';

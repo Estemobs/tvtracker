@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { api } from '../api/client.js';
+import { api, clearLegacyToken } from '../api/client.js';
 
 const AuthContext = createContext(null);
 
@@ -32,6 +32,7 @@ export function AuthProvider({ children }) {
     } catch {
       // The local session is cleared even if the server is unreachable.
     } finally {
+      clearLegacyToken();
       setUser(null);
     }
   };
