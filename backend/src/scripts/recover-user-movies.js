@@ -14,7 +14,7 @@
 //
 // IMPORTANT: the running 1.0.0 container does not contain this script, and
 // Watchtower may restart the app (and checkpoint the WAL) within ~300 seconds.
-// Back up /data, pause Watchtower, then run a one-off 1.0.1 container with the
+// Back up /data, pause Watchtower, then run a one-off 1.0.2 container with the
 // same volume. Do not restart the app before the first dry-run.
 //
 //   docker compose -f docker-compose.prod.yml stop watchtower

@@ -121,7 +121,7 @@ React + Vite + Tailwind côté client, Node.js + Express côté serveur (sert l'
 
 ## Récupération des films après la migration 010
 
-La migration 010 des versions précédentes pouvait supprimer les films enregistrés par les utilisateurs. La version 1.0.1 corrige la migration pour les installations qui ne l'ont pas encore exécutée, mais elle ne peut pas restaurer les lignes déjà effacées. Le script `backend/src/scripts/recover-user-movies.js` tente de les retrouver dans le fichier SQLite et son WAL.
+La migration 010 des versions précédentes pouvait supprimer les films enregistrés par les utilisateurs. La version 1.0.1 corrige la migration pour les installations qui ne l'ont pas encore exécutée ; la 1.0.2 complète la récupération, mais aucune version ne peut restaurer les lignes déjà effacées. Le script `backend/src/scripts/recover-user-movies.js` tente de les retrouver dans le fichier SQLite et son WAL.
 
 La récupération est **best-effort** : elle ne retrouve que les pages qui n'ont pas encore été réutilisées. Faites une sauvegarde avant toute opération.
 
@@ -138,7 +138,7 @@ La récupération est **best-effort** : elle ne retrouve que les pages qui n'ont
    docker compose -f docker-compose.prod.yml stop watchtower
    ```
 
-3. Ne pas redémarrer l'application avant le premier dry-run. L'ancien conteneur ne contient pas le script : utilisez l'image 1.0.1 dans un conteneur ponctuel, avec le même volume :
+3. Ne pas redémarrer l'application avant le premier dry-run. L'ancien conteneur ne contient pas le script : utilisez l'image 1.0.2 dans un conteneur ponctuel, avec le même volume :
 
    ```bash
    docker compose -f docker-compose.prod.yml pull tvtracker
