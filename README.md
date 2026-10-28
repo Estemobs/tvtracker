@@ -83,9 +83,14 @@ Chaque push sur `main` republie l'image sur GHCR ; sur un serveur lancé avec [`
 | Variable | Rôle | Requis |
 |---|---|---|
 | `JWT_SECRET` | Signature des sessions — générer avec `openssl rand -hex 32` | ✅ |
+| `COOKIE_SECURE` | Cookie de session `Secure` : `1` derrière HTTPS, `0` en HTTP LAN | non (0) |
 | `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Compte admin initial | ✅ |
 | `PORT` | Port HTTP exposé | non (3000) |
 | `MOVIE_PROVIDER` | Source des films : `cinemeta` (défaut) ou `wikipedia` (retour arrière pendant la migration) | non (cinemeta) |
+
+> Derrière un reverse proxy HTTPS, définissez `COOKIE_SECURE=1` pour que le cookie de session soit marqué `Secure`. En HTTP simple sur le LAN, laissez `0` pour ne pas casser le login.
+
+Les sessions navigateur utilisent un cookie `HttpOnly` (`tvtracker_session`) : le JWT n'est plus stocké dans `localStorage`. Les anciens jetons `localStorage` sont supprimés au chargement. `POST /api/auth/login` ne renvoie plus de `token` dans le JSON ; le middleware accepte encore un Bearer existant pour compatibilité, mais les nouveaux clients doivent utiliser le cookie de session.
 
 ## Un catalogue sans clé d'API
 
