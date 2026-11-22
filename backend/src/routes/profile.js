@@ -6,6 +6,7 @@ import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { db, DATA_DIR } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { ALLOWED_AVATAR_MIME_TYPES, safeAvatarExtension } from '../utils/uploads.js';
 import { importTvTimeArchive } from '../services/tvtimeImport.js';
 import {
   normalizeDiscordWebhookUrl,
@@ -36,13 +37,17 @@ const upload = multer({
   storage: multer.diskStorage({
     destination: path.join(DATA_DIR, 'uploads'),
     filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, `avatar-${req.user.id}-${Date.now()}${ext}`);
+      try {
+        // Never trust the client-provided filename: derive the extension from the MIME type.
+        cb(null, `avatar-${req.user.id}-${randomUUID()}${safeAvatarExtension(file.mimetype)}`);
+      } catch (error) {
+        cb(error);
+      }
     },
   }),
   limits: { fileSize: 3 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) {
+    if (!ALLOWED_AVATAR_MIME_TYPES.includes(file.mimetype)) {
       return cb(new Error('Format d\'image non supporté.'));
     }
     cb(null, true);

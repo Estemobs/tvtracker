@@ -1,8 +1,11 @@
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DATA_DIR } from './db/index.js';
+import { HEADERS_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from './utils/timeouts.js';
+import { isSafeUploadPath } from './utils/uploads.js';
 import { bootstrapAdmin } from './bootstrapAdmin.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
@@ -32,11 +35,16 @@ process.on('unhandledRejection', (reason) => {
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
+app.use(cookieParser());
 
 app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/version', (req, res) => res.json({ version: process.env.GIT_SHA || 'dev' }));
 
-app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
+app.use('/uploads', (req, res, next) => {
+  if (!isSafeUploadPath(req.path)) return res.status(404).end();
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+}, express.static(path.join(DATA_DIR, 'uploads')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -63,7 +71,7 @@ const server = app.listen(PORT, () => {
   startTrendingWarmup();
 });
 
-// The TV Time import processes hundreds of shows/movies against external APIs and can take
-// several minutes — Node's default 5-minute request timeout would otherwise kill it mid-import.
-server.requestTimeout = 0;
-server.headersTimeout = 0;
+// The TV Time import returns 202 immediately and runs in the background, so the HTTP request
+// only covers the upload. Keep finite timeouts to prevent Slowloris-style connection exhaustion.
+server.requestTimeout = REQUEST_TIMEOUT_MS;
+server.headersTimeout = HEADERS_TIMEOUT_MS;

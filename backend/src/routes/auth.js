@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db/index.js';
 import { signToken } from '../utils/jwt.js';
+import { authCookieOptions, SESSION_COOKIE } from '../utils/cookies.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -107,8 +108,8 @@ router.post('/login', loginLimiter, (req, res) => {
   db.prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?').run(user.id);
 
   const token = signToken(user);
+  res.cookie(SESSION_COOKIE, token, authCookieOptions());
   res.json({
-    token,
     user: {
       id: user.id,
       username: user.username,
@@ -120,6 +121,12 @@ router.post('/login', loginLimiter, (req, res) => {
       discord_message_template: user.discord_message_template,
     },
   });
+});
+
+router.post('/logout', (req, res) => {
+  const { maxAge, ...options } = authCookieOptions();
+  res.clearCookie(SESSION_COOKIE, options);
+  res.json({ message: 'Déconnecté.' });
 });
 
 router.get('/me', requireAuth, (req, res) => {
