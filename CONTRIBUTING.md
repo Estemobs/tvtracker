@@ -10,7 +10,7 @@ Merci de vouloir contribuer à TVTracker !
 ## Développement
 
 ```bash
-# Backend (Node 20)
+# Backend (Node 22)
 cd backend && npm install
 JWT_SECRET=dev ADMIN_EMAIL=admin@test.com ADMIN_USERNAME=admin ADMIN_PASSWORD=adminpass npm run dev
 

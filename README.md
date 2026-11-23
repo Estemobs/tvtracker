@@ -168,7 +168,7 @@ La récupération est **best-effort** : elle ne retrouve que les pages qui n'ont
 ## Développement
 
 ```bash
-# Backend (Node 20 — better-sqlite3 est un module natif compilé)
+# Backend (Node 22 — better-sqlite3 est un module natif compilé)
 cd backend && npm install
 JWT_SECRET=dev ADMIN_EMAIL=admin@test.com ADMIN_USERNAME=admin ADMIN_PASSWORD=adminpass npm run dev
 
