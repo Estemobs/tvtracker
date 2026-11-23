@@ -1,6 +1,16 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+/* Tailwind v4 defaults borders to currentColor; keep the v3 grey-200 default so existing
+   `border` utilities without an explicit colour keep their previous look. */
+@layer base {
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    border-color: #e5e7eb;
+  }
+}
 
 html, body, #root {
   height: 100%;
@@ -11,7 +21,7 @@ html, body, #root {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: theme('colors.base.600');
+  background: #343b47; /* base.600 */
   border-radius: 4px;
 }
 
